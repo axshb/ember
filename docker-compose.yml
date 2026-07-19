@@ -1,0 +1,21 @@
+services:
+  ember:
+    build: .
+    restart: unless-stopped
+    pid: host
+
+    volumes:
+      # Docker socket — lets the daemon collect container metrics
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Host filesystem read-only at /host — agent file browsing tools
+      - /:/host:ro
+
+      # Config (gitignored, contains secrets) — mount from host
+      - ./config/config.toml:/app/config/config.toml:ro
+
+      # Prompts (gitignored, user-specific) — read-write for memorybook.json
+      - ./config/prompts:/app/config/prompts
+
+    # Config comes from TOML only, no env fallbacks.
+    # If config.toml doesn't exist, the app will print a helpful error.

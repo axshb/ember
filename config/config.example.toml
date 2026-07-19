@@ -1,0 +1,80 @@
+# ──────────────────────────────────────────────
+# Firekeep configuration
+# Copy this file to config.toml and fill in your values.
+# ──────────────────────────────────────────────
+
+[polling]
+# Interval in seconds between metric collection cycles
+interval = 10
+
+# ── Alerts ───────────────────────────────────
+# Each alert checks a metric path against a threshold.
+# Paths: system.cpu.percent, system.memory.percent,
+#        system.disks.<dev>.percent,
+#        containers.<n>.cpu_percent, containers.<n>.memory_percent
+
+[[alerts]]
+path = "system.cpu.percent"
+op = ">"
+value = 80
+# Cooldown in minutes before this alert can fire again
+cooldown = 5
+
+[[alerts]]
+path = "system.memory.percent"
+op = ">"
+value = 80
+cooldown = 5
+
+# ── Agent ────────────────────────────────────
+[agent]
+# OpenRouter API key
+api_key = "YOUR_OPENROUTER_API_KEY"
+# Model to use (see https://openrouter.ai/models)
+model = "deepseek/deepseek-v4-flash"
+
+[agent.shell]
+# Commands the agent is allowed to run (admin only)
+allowed_commands = [
+  "ls", "cat", "grep", "find", "rg", "head", "tail", "wc",
+  "ps", "df", "du", "free", "uptime", "stat", "awk",
+  "docker", "systemctl", "journalctl", "dmesg",
+  "ss", "ping", "curl",
+]
+denied_operators = []
+default_timeout = 30.0
+
+[agent.filesystem]
+root_dir = "/host"
+denied_patterns = [".env", ".env.*", "*.pem", "*.key", "**/secrets*", ".git/*"]
+
+# ── Sinks ────────────────────────────────────
+# Enable the notification sinks you want to use.
+# At least one must be enabled for the bot to do anything useful.
+
+[sinks]
+discord = false
+email = false
+slack = false
+telegram = false
+
+# ── Discord ──────────────────────────────────
+# Required if sinks.discord = true
+
+[discord]
+# Bot token from the Discord Developer Portal
+token = "YOUR_DISCORD_BOT_TOKEN"
+# Your Discord user ID (gives admin/shell access to the agent)
+admin_user_id = "YOUR_DISCORD_USER_ID"
+# Channel to send proactive notifications to
+notification_channel_id = "YOUR_NOTIFICATION_CHANNEL_ID"
+# Words that trigger the bot in any allowed channel
+trigger_words = ["ember", "firekeeper"]
+# Comma-separated list of channel IDs the bot is allowed to respond in
+allowed_channels = "CHANNEL_ID_1,CHANNEL_ID_2"
+# Comma-separated list of bot IDs to ignore (prevents bot loops)
+bot_ids = "BOT_ID_1,BOT_ID_2"
+# Emoji to react with when the bot processes a message (empty = none)
+react_emoji = ""
+# Number of previous messages to include as context
+history_limit = 50
