@@ -26,7 +26,7 @@ def check_alerts(metrics, alerts, last_fired: dict) -> list[dict]:
   for alert in alerts:
       try:
           actual = _get_measured_value(metrics, alert["path"])
-      except (KeyError, IndexError):
+      except (KeyError, IndexError, StopIteration):
           continue
       if not OPS[alert["op"]](actual, alert["value"]): # comparing values, see OPS
           continue
