@@ -1,6 +1,7 @@
 .old
 venv
 __pycache__
-config/config.toml
+.zcode/
+config.toml
 config/prompts/
 TODO

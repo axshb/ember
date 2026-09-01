@@ -15,6 +15,4 @@ RUN uv sync --frozen --no-install-project
 COPY . .
 RUN uv sync --frozen
 
-RUN playwright install --with-deps chromium
-
 CMD ["python", "main.py"]

@@ -12,10 +12,11 @@ services:
       - /:/host:ro
 
       # Config (gitignored, contains secrets) — mount from host
-      - ./config/config.toml:/app/config/config.toml:ro
+      - ./config.toml:/app/config.toml:ro
 
-      # Prompts (gitignored, user-specific) — read-write for memorybook.json
-      - ./config/prompts:/app/config/prompts
+      # Custom prompts (gitignored, user-specific) — read-only,
+      # override same-named files in config/defaults/prompts/
+      - ./config/prompts:/app/config/prompts:ro
 
     # Config comes from TOML only, no env fallbacks.
     # If config.toml doesn't exist, the app will print a helpful error.

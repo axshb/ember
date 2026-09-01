@@ -37,5 +37,5 @@ def check_alerts(metrics, alerts, last_fired: dict) -> list[dict]:
           continue
 
       last_fired[key] = now
-      active.append(alert)
+      active.append({**alert, "measured": actual})
   return active

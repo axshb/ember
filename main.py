@@ -1,17 +1,20 @@
 import asyncio
-from time import time, sleep
+import logging
 import tomllib
-
 from pathlib import Path
+
+from agent.agent import run_alert
+from agent.report import render_markdown
+from daemon.alerts import check_alerts
 from daemon.containers import collect_docker_metrics
 from daemon.system import collect_system_metrics
-from daemon.alerts import check_alerts
-from sinks.discord.discord_bridge import start_discord_client
-from agent.agent import run_alert
-from sinks.discord.discord_bridge import discord_client
+from sinks import build_sinks
 
-CONFIG_PATH = "config/config.toml"
-EXAMPLE_PATH = "config/config.example.toml"
+CONFIG_PATH = "config.toml"
+EXAMPLE_PATH = "config.example.toml"
+
+logger = logging.getLogger(__name__)
+
 
 def load_config() -> dict:
     p = Path(CONFIG_PATH)
@@ -23,7 +26,8 @@ def load_config() -> dict:
     with open(p, "rb") as f:
         return tomllib.load(f)
 
-async def daemon_loop(cfg):
+
+async def daemon_loop(cfg, sinks):
     last_fired = {}
     while True:
         docker = await collect_docker_metrics()
@@ -31,59 +35,29 @@ async def daemon_loop(cfg):
         metrics = {"system": system.model_dump(), "containers": docker.model_dump()["containers"]}
 
         active_alerts = check_alerts(metrics, cfg["alerts"], last_fired)
-        agent_response = await handle_alerts(active_alerts, cfg)
-        toggled_sinks = [k for k, v in cfg["sinks"].items() if v]
-        await distribute_alerts(agent_response, toggled_sinks)
+        if active_alerts:
+            alerts = [{k: v for k, v in a.items() if k != "cooldown"} for a in active_alerts]
+            report = await run_alert(alerts, cfg)
+            text = render_markdown(report)
+            for sink in sinks:
+                try:
+                    await sink.send(report, text)
+                except Exception as e:
+                    logger.error("sink %s failed: %s", type(sink).__name__, e)
 
         await asyncio.sleep(cfg["polling"]["interval"])
 
-async def handle_alerts(active_alerts, cfg):
-    if active_alerts:
-        cleaned_alerts = []
-        for alert in active_alerts:
-            values_list = [str(val) for val in alert.values()]
-            res = "".join(values_list[:-1]) # [:-1] slice to exclude cooldown
-            cleaned_alerts.append(res)
-        return await run_alert(alerts=cleaned_alerts, cfg=cfg)
-
-async def distribute_alerts(agent_response, toggled_sinks):
-    if not agent_response:
-        return
-    text = agent_response.get("analysis", "") if isinstance(agent_response, dict) else str(agent_response)
-    if "discord" in toggled_sinks:
-        await discord_client.send_alert(text)
-    if "email" in toggled_sinks:
-        pass
-    if "slack" in toggled_sinks:
-        pass
-    if "telegram" in toggled_sinks:
-        pass
-
-def gather_sinks(cfg):
-    tasks = []
-    active_sinks = []
-
-    for k, v in cfg["sinks"].items():
-        if v:
-           active_sinks.append(k)
-
-    if "discord" in active_sinks:
-        tasks.append(start_discord_client(cfg["discord"], cfg["agent"]))
-    if "email" in active_sinks:
-        pass
-    if "slack" in active_sinks:
-        pass
-    if "telegram" in active_sinks:
-        pass
-    return tasks, active_sinks
 
 async def main():
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     cfg = load_config()
+    sinks = build_sinks(cfg)
+    if not sinks:
+        raise SystemExit("no sinks enabled in config.toml — enable at least one under [sinks].")
+    await daemon_loop(cfg, sinks)
 
-    tasks, _ = gather_sinks(cfg)
-    tasks.append(daemon_loop(cfg))
-
-    await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
     asyncio.run(main())

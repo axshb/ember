@@ -1,6 +1,6 @@
 # ──────────────────────────────────────────────
-# Firekeep configuration
-# Copy this file to config.toml and fill in your values.
+# Ember configuration
+# Copy this file to config.toml (repo root) and fill in your values.
 # ──────────────────────────────────────────────
 
 [polling]
@@ -31,50 +31,53 @@ cooldown = 5
 # OpenRouter API key
 api_key = "YOUR_OPENROUTER_API_KEY"
 # Model to use (see https://openrouter.ai/models)
-model = "deepseek/deepseek-v4-flash"
+model = "z-ai/glm-5.3-flash"
+# Hard cap on tool calls (and requests) per alert report
+max_tool_calls = 15
 
 [agent.shell]
-# Commands the agent is allowed to run (admin only)
+# Commands the agent may run while triaging alerts (investigation is read-only)
 allowed_commands = [
   "ls", "cat", "grep", "find", "rg", "head", "tail", "wc",
   "ps", "df", "du", "free", "uptime", "stat", "awk",
   "docker", "systemctl", "journalctl", "dmesg",
-  "ss", "ping", "curl",
+  "ss", "ping", "curl", "uname", "hostname", "id",
 ]
+denied_commands = []
 denied_operators = []
 default_timeout = 30.0
+max_output_chars = 50000
 
 [agent.filesystem]
 root_dir = "/host"
 denied_patterns = [".env", ".env.*", "*.pem", "*.key", "**/secrets*", ".git/*"]
 
 # ── Sinks ────────────────────────────────────
-# Enable the notification sinks you want to use.
-# At least one must be enabled for the bot to do anything useful.
+# Every sink is one-way: ember sends reports, it never listens for replies.
+# At least one must be enabled for ember to do anything useful.
 
 [sinks]
-discord = false
+discord = true
 email = false
-slack = false
-telegram = false
+slack = false    # not implemented yet
+telegram = false # not implemented yet
 
 # ── Discord ──────────────────────────────────
-# Required if sinks.discord = true
+# Required if sinks.discord = true.
+# Create one in the notification channel: Settings → Integrations → Webhooks
 
 [discord]
-# Bot token from the Discord Developer Portal
-token = "YOUR_DISCORD_BOT_TOKEN"
-# Your Discord user ID (gives admin/shell access to the agent)
-admin_user_id = "YOUR_DISCORD_USER_ID"
-# Channel to send proactive notifications to
-notification_channel_id = "YOUR_NOTIFICATION_CHANNEL_ID"
-# Words that trigger the bot in any allowed channel
-trigger_words = ["ember", "firekeeper"]
-# Comma-separated list of channel IDs the bot is allowed to respond in
-allowed_channels = "CHANNEL_ID_1,CHANNEL_ID_2"
-# Comma-separated list of bot IDs to ignore (prevents bot loops)
-bot_ids = "BOT_ID_1,BOT_ID_2"
-# Emoji to react with when the bot processes a message (empty = none)
-react_emoji = ""
-# Number of previous messages to include as context
-history_limit = 50
+webhook_url = "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+
+# ── Email ────────────────────────────────────
+# Required if sinks.email = true.
+
+[email]
+host = "smtp.example.com"
+port = 587
+username = "you@example.com"
+password = "YOUR_SMTP_PASSWORD"
+from = "ember@example.com"
+to = "you@example.com"
+# STARTTLS on port 587; set false only for plain SMTP (e.g. port 25)
+starttls = true
