@@ -3,11 +3,12 @@ import logging
 import tomllib
 from pathlib import Path
 
-from agent.agent import run_alert
+from agent.agent import run_alert, run_rss
 from agent.report import render_markdown
 from daemon.alerts import check_alerts
 from daemon.containers import collect_docker_metrics
 from daemon.system import collect_system_metrics
+from daemon.rss import rss_loop
 from sinks import build_sinks
 
 CONFIG_PATH = "config.toml"
@@ -27,25 +28,42 @@ def load_config() -> dict:
         return tomllib.load(f)
 
 
-async def daemon_loop(cfg, sinks):
+async def send_report(report, sinks) -> bool:
+    text = render_markdown(report)
+    delivered = bool(sinks)
+    for sink in sinks:
+        try:
+            await sink.send(report, text)
+        except Exception as e:
+            delivered = False
+            logger.error("sink %s failed: %s", type(sink).__name__, e)
+    return delivered
+
+
+async def metrics_loop(cfg, sinks):
     last_fired = {}
     while True:
         docker = await collect_docker_metrics()
         system = await collect_system_metrics()
         metrics = {"system": system.model_dump(), "containers": docker.model_dump()["containers"]}
 
-        active_alerts = check_alerts(metrics, cfg["alerts"], last_fired)
+        active_alerts = check_alerts(metrics, cfg.get("alerts", []), last_fired)
         if active_alerts:
             alerts = [{k: v for k, v in a.items() if k != "cooldown"} for a in active_alerts]
             report = await run_alert(alerts, cfg)
-            text = render_markdown(report)
-            for sink in sinks:
-                try:
-                    await sink.send(report, text)
-                except Exception as e:
-                    logger.error("sink %s failed: %s", type(sink).__name__, e)
+            await send_report(report, sinks)
 
         await asyncio.sleep(cfg["polling"]["interval"])
+
+
+async def daemon_loop(cfg, sinks):
+    async def deliver_rss(entries):
+        report = await run_rss(entries, cfg)
+        return await send_report(report, sinks)
+
+    async with asyncio.TaskGroup() as tasks:
+        tasks.create_task(metrics_loop(cfg, sinks))
+        tasks.create_task(rss_loop(cfg, deliver_rss))
 
 
 async def main():

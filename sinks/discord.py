@@ -50,3 +50,4 @@ class DiscordWebhookSink:
             resp = await client.post(self.webhook_url, json={"embeds": [embed]})
         if resp.status_code >= 300:
             logger.error("discord webhook failed: %s %s", resp.status_code, resp.text[:200])
+        resp.raise_for_status()

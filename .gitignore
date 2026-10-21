@@ -5,3 +5,4 @@ __pycache__
 config.toml
 config/prompts/
 TODO
+data/

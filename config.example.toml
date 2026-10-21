@@ -7,6 +7,19 @@
 # Interval in seconds between metric collection cycles
 interval = 10
 
+# ── RSS / Atom ───────────────────────────────
+# Independent of alerts: new entries go to the agent, then all enabled sinks.
+[rss]
+# Empty list disables RSS. Example: Ubuntu Security Notices.
+feeds = ["https://ubuntu.com/security/notices/rss.xml"]
+interval = 900 # seconds between feed checks, independent of metric polling
+timeout = 30 # HTTP timeout in seconds
+batch_size = 10 # entries per agent report (1–10)
+state_path = "data/rss.sqlite3" # durable deduplication; keep across restarts
+# false: first successful fetch establishes a baseline without old-item spam.
+# true: report all entries currently in a newly configured feed.
+send_existing = false
+
 # ── Alerts ───────────────────────────────────
 # Each alert checks a metric path against a threshold.
 # Paths: system.cpu.percent, system.memory.percent,
@@ -32,7 +45,7 @@ cooldown = 5
 api_key = "YOUR_OPENROUTER_API_KEY"
 # Model to use (see https://openrouter.ai/models)
 model = "z-ai/glm-5.3-flash"
-# Hard cap on tool calls (and requests) per alert report
+# Hard cap on tool calls (and requests) per alert or RSS report
 max_tool_calls = 15
 
 [agent.shell]

@@ -5,6 +5,10 @@ metrics, evaluates threshold alerts, has an LLM agent triage what fired (using
 read-only shell/filesystem tools), and sends a structured report to your
 sinks. Nothing listens for replies — every sink is one-way.
 
+Ember also polls configured RSS/Atom feeds independently of metric alerts.
+New entries go directly to the agent for a summary and then to every enabled
+sink, using the same structured report format.
+
 ## Sinks
 
 - **discord** — webhook. Create one in your notification channel
@@ -17,6 +21,39 @@ sinks. Nothing listens for replies — every sink is one-way.
 
 Copy `config.example.toml` to `config.toml` in the repo root and fill it in.
 Secrets live only in `config.toml`, which is gitignored.
+
+### RSS / Atom
+
+Configure feed URLs under `[rss]`, for example Ubuntu security notices:
+
+```toml
+[rss]
+feeds = ["https://ubuntu.com/security/notices/rss.xml"]
+interval = 900
+send_existing = false
+```
+
+An empty list (or no `[rss]` section) disables feed polling. The interval is in
+seconds and independent of metric collection. The first successful fetch of
+each new feed establishes a baseline without reporting historical entries;
+set `send_existing = true` to report the current backlog instead. Later entries
+are deduplicated by feed URL and entry ID (falling back to link or content hash).
+Edits to an already-seen ID do not generate a new report.
+
+State lives in `data/rss.sqlite3` (`rss.state_path` to override); Compose keeps
+it in the `ember-data` volume. Keep this state across restarts to avoid replay
+or re-baselining. Feed failures are isolated and retried next cycle. Reports
+contain up to `rss.batch_size` entries (default/max 10); `rss.timeout` defaults
+to 30 seconds. Failed deliveries are retried while the entries remain in the
+feed; successful sinks can receive duplicates if another sink fails or the
+process stops between delivery and saving state. If the model fails, a raw
+informational report with source links is sent instead.
+
+Feed content is untrusted. The agent is instructed to summarize it, not obey
+embedded instructions, and never to apply updates itself.
+
+The RSS-specific instructions live in `config/defaults/prompts/rss.md` and can
+be overridden with `config/prompts/rss.md`, like the triage prompt.
 
 ### Prompts
 
@@ -41,3 +78,10 @@ or locally:
 The container mounts the Docker socket (metrics), `/` at `/host` read-only
 (agent filesystem tools), and `config.toml` / `config/prompts` read-only from
 the host.
+
+## Tests
+
+    uv run python -m unittest discover -s tests -v
+
+Tests use mocked HTTP, agent, and sink calls; no API keys or live deliveries
+are needed.
