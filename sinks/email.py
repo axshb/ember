@@ -37,4 +37,3 @@ class EmailSink:
             )
         except Exception as e:
             logger.error("email send failed: %s", e)
-            raise

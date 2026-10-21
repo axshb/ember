@@ -6,4 +6,3 @@ __pycache__
 config/config.toml
 config/prompts
 *.egg-info
-data

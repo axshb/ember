@@ -18,11 +18,5 @@ services:
       # override same-named files in config/defaults/prompts/
       - ./config/prompts:/app/config/prompts:ro
 
-      # Durable RSS deduplication across container recreations
-      - ember-data:/app/data
-
     # Config comes from TOML only, no env fallbacks.
     # If config.toml doesn't exist, the app will print a helpful error.
-
-volumes:
-  ember-data:

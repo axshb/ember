@@ -41,16 +41,3 @@ def fallback_report(alerts: list[dict]) -> AlertReport:
         findings=findings,
         actions=["Re-check the affected metric or re-run triage manually."],
     )
-
-
-def fallback_rss_report(entries: list[dict]) -> AlertReport:
-    """Preserve source links even when the model is unavailable."""
-    return AlertReport(
-        title="RSS updates",
-        severity="info",
-        summary="The agent could not analyze these feed updates. Review the sources below.",
-        findings=[
-            f"{entry['feed']}: {entry['title']} — {entry['link']}"
-            for entry in entries[:10]
-        ],
-    )
