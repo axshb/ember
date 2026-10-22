@@ -30,6 +30,12 @@ the same-named default wholesale; nothing is copied or merged at startup, so
 override it by creating your own `config/prompts/triage.md`, or add new
 `*.md` files alongside it.
 
+## Tests
+
+    uv run pytest
+
+Tests mock external calls; no API keys, Docker daemon, or notification services required.
+
 ## Run
 
     docker compose up -d --build
