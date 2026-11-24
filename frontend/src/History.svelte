@@ -51,7 +51,7 @@
           {/if}
           <footer class="text-light small">
             {#each r.alerts as a}
-              <div>Triggered by {label(a.path)} at <strong>{a.measured} {unit(a.path)}</strong> ({a.op} {a.value})</div>
+              <div>{a.state === 'resolved' ? 'Cleared' : 'Triggered'}: {label(a.path)} at <strong>{a.measured} {unit(a.path)}</strong> ({a.op} {a.value})</div>
             {/each}
           </footer>
         </div>

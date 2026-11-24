@@ -63,7 +63,9 @@ class ApiTests(unittest.TestCase):
             {"alerts": [1]},
             {"alerts": {"path": "x"}},
             {"email": "nope"},
-            {"alerts": [{"path": "system.cpu.percent", "op": ">", "value": 80, "cooldown": -1}]},
+            {"alerts": [{"path": "system.cpu.percent", "op": ">", "value": 80, "remind": -1}]},
+            {"alerts": [{"path": "system.cpu.percent", "op": ">", "value": 80, "remind": 1}]},
+            {"alerts": [{"path": "system.cpu.percent", "op": ">", "value": 80, "remind": "60"}]},
         ):
             with self.subTest(bad=bad):
                 body = json.dumps({**self.config(), **bad})  # allows NaN/Infinity like a raw client would
@@ -166,3 +168,29 @@ class ApiTests(unittest.TestCase):
         reports = self.client.get("/api/reports").json()
         self.assertEqual(len(reports), 50)
         self.assertEqual(reports[0]["report"]["title"], "54")
+
+    def test_old_cooldowns_are_migrated_on_read_and_import(self):
+        cfg = self.store.get_config()
+        cfg["alerts"] = [{"path": "system.cpu.percent", "op": ">", "value": 80, "cooldown": 5}]
+        self.store.save_config(cfg)
+        self.assertEqual(self.config()["alerts"], [{"path": "system.cpu.percent", "op": ">", "value": 80, "remind": 0}])
+
+        data = self.client.get("/api/export").json()
+        data["config"]["alerts"][0] = {"path": "system.memory.percent", "op": ">", "value": 90, "cooldown": 15}
+        self.assertEqual(self.client.post("/api/import", json=data, headers=JSON).json(), {"ok": True})
+        self.assertEqual(self.store.get_config()["alerts"], [{"path": "system.memory.percent", "op": ">", "value": 90, "remind": 0}])
+
+    def test_alert_state_round_trips(self):
+        self.store.save_alert_state("metric:x > 1", {"since": 1, "notified": 1, "clear_since": None})
+        self.assertEqual(self.store.load_alert_state(), {"metric:x > 1": {"since": 1, "notified": 1, "clear_since": None}})
+        self.store.delete_alert_state("metric:x > 1")
+        self.assertEqual(self.store.load_alert_state(), {})
+
+    def test_bad_alert_state_rows_are_dropped_and_state_survives_a_real_restart(self):
+        from daemon.state import AlertState
+
+        self.store.db.execute("INSERT INTO alert_state VALUES ('junk', 'not json'), ('half', '{\"since\": 1}')")
+        state = AlertState(self.store)
+        self.assertEqual(state.firing, {})
+        self.assertEqual(state.update("metric:a", True, 0), "fired")
+        self.assertEqual(AlertState(self.store).update("metric:a", True, 10), None)

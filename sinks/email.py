@@ -21,10 +21,16 @@ class EmailSink:
         self.starttls = cfg.get("starttls", True)
 
     async def send(self, report: AlertReport, text: str) -> None:
+        await self._send(f"[ember] {report.severity} — {report.title}", text)
+
+    async def notify(self, kind: str, title: str, text: str) -> None:
+        await self._send(f"[ember] {title}", text)
+
+    async def _send(self, subject: str, text: str) -> None:
         msg = EmailMessage()
         msg["From"] = self.sender
         msg["To"] = ", ".join(self.recipients)
-        msg["Subject"] = f"[ember] {report.severity} — {report.title}"
+        msg["Subject"] = subject
         msg.set_content(text)
 
         try:

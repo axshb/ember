@@ -96,3 +96,18 @@ class SinkSendTests(unittest.IsolatedAsyncioTestCase):
             with self.assertLogs("sinks.email", level="ERROR") as logs:
                 await sink.send(AlertReport(title="Alert", summary="Details"), "Report body")
         self.assertIn("offline", logs.output[0])
+
+    async def test_notices_are_short_messages_without_a_report(self):
+        with patch("sinks.discord.httpx.AsyncClient") as client_class:
+            client = client_class.return_value.__aenter__.return_value
+            client.post.return_value = Mock(status_code=204)
+            await DiscordWebhookSink("https://example.com/webhook").notify("resolved", "Resolved: CPU", "back to 40%")
+        embed = client.post.call_args.kwargs["json"]["embeds"][0]
+        self.assertEqual(embed, {"title": "Resolved: CPU", "description": "back to 40%", "color": 0x2ECC71})
+
+        sink = EmailSink({"host": "smtp.example.com", "from": "ember@example.com", "to": "ash@example.com"})
+        with patch("sinks.email.aiosmtplib.send", new_callable=AsyncMock) as send:
+            await sink.notify("remind", "Still firing: CPU", "at 95% for 6h")
+        message = send.call_args.args[0]
+        self.assertEqual(message["Subject"], "[ember] Still firing: CPU")
+        self.assertEqual(message.get_content(), "at 95% for 6h\n")

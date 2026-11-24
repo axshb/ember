@@ -37,6 +37,8 @@ def fallback_report(
         f"{a['path']} {a['op']} {a['value']} (measured: {a.get('measured', '?')})"
         for a in alerts
     ]
+    if len(findings) > 10:  # AlertReport caps findings at 10, raising here would loop the retry
+        findings = [*findings[:9], f"+{len(findings) - 9} more"]
     return AlertReport(
         title=f"Alert fired: {paths}"[:120],
         severity="warning",

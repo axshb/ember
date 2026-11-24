@@ -51,6 +51,12 @@ class ReportTests(unittest.TestCase):
         ])
         self.assertTrue(report.actions)
 
+    def test_fallback_caps_findings_when_many_alerts_fire(self):
+        report = fallback_report([{"path": f"p{i}", "op": ">", "value": 1} for i in range(15)])
+        self.assertEqual(len(report.findings), 10)
+        self.assertEqual(report.findings[-1], "+6 more")
+        self.assertEqual(len(fallback_report([{"path": f"p{i}", "op": ">", "value": 1} for i in range(10)]).findings), 10)
+
     def test_fallback_truncates_long_titles(self):
         report = fallback_report([{"path": "x" * 200, "op": ">", "value": 1}])
         self.assertEqual(len(report.title), 120)

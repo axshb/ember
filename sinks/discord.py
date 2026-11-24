@@ -7,6 +7,7 @@ from agent.report import AlertReport
 logger = logging.getLogger(__name__)
 
 SEVERITY_COLORS = {"info": 0x3498DB, "warning": 0xE67E22, "critical": 0xE74C3C}
+NOTICE_COLORS = {"resolved": 0x2ECC71, "remind": 0x95A5A6}
 
 # Discord embed limits
 TITLE_LIMIT = 256
@@ -46,6 +47,16 @@ class DiscordWebhookSink:
         if fields:
             embed["fields"] = fields
 
+        await self._post(embed)
+
+    async def notify(self, kind: str, title: str, text: str) -> None:
+        await self._post({
+            "title": _clip(title, TITLE_LIMIT),
+            "description": _clip(text, DESCRIPTION_LIMIT),
+            "color": NOTICE_COLORS.get(kind, NOTICE_COLORS["remind"]),
+        })
+
+    async def _post(self, embed: dict) -> None:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(self.webhook_url, json={"embeds": [embed]})
         if resp.status_code >= 300:

@@ -14,13 +14,14 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from agent.agent import default_prompts
-from api.store import SECRETS, Store, without_secrets
+from api.store import SECRETS, Store, migrate, without_secrets
 from daemon.alerts import OPS
 from daemon.metrics import catalog
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 MASK = "********"
 OK = {"ok": True}
+MIN_REMIND = 5  # minutes, anything shorter is just spam
 
 
 def _error(message: str) -> JSONResponse:
@@ -51,8 +52,9 @@ def _validate(cfg: dict) -> str | None:
                 return f"unknown condition {rule.get('op')!r}"
             if not _number(rule.get("value")):
                 return f"threshold for {rule['path']} must be a number"
-            if not _number(rule.get("cooldown", 0)) or rule.get("cooldown", 0) < 0:
-                return f"cooldown for {rule['path']} must be a positive number of minutes"
+            remind = rule.get("remind", 0)
+            if not _number(remind) or not (remind == 0 or remind >= MIN_REMIND):
+                return f"reminder for {rule['path']} must be off or at least {MIN_REMIND} minutes"
         for section, _ in SECRETS:
             if not isinstance(cfg[section], dict):
                 return "malformed config"
@@ -169,6 +171,7 @@ def create_app(store: Store, latest: dict) -> Starlette:
         cfg = data.get("config") if isinstance(data, dict) else None
         if not isinstance(cfg, dict):
             return _error("not an ember export")
+        cfg = migrate(cfg)  # older exports have cooldowns
         if error := _validate(cfg):
             return _error(error)
         current = store.get_config()

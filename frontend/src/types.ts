@@ -3,7 +3,7 @@ export interface AlertRule {
   path: string
   op: string
   value: number
-  cooldown: number
+  remind: number // minutes, 0 = never
 }
 
 export interface Config {
@@ -46,7 +46,7 @@ export interface Prompt {
 export interface Report {
   id: number
   time: number
-  alerts: (AlertRule & { measured: number })[]
+  alerts: (Omit<AlertRule, 'remind'> & { measured: number; state?: 'fired' | 'resolved' })[]
   report: {
     title: string
     severity: 'info' | 'warning' | 'critical'

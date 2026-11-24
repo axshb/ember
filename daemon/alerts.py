@@ -25,24 +25,31 @@ def _get_measured_value(data, path: str):
       data, i = data[parts[i]], i + 1
   return data
 
-def check_alerts(metrics, alerts, last_fired: dict) -> list[dict]:
-  now = time()
-  active = []
+PREFIX = "metric:"
+
+
+def rule_key(rule: dict) -> str:
+  # editing a threshold makes it a new rule with fresh state
+  return f"{PREFIX}{rule['path']} {rule['op']} {rule['value']}"
+
+
+def check_alerts(metrics, alerts, state, now: float | None = None) -> dict[str, list[dict]]:
+  """Feed every rule through `state`, return the rules that changed, grouped by transition."""
+  now = time() if now is None else now
+  out = {"fired": [], "resolved": [], "remind": []}
   for alert in alerts:
       try:
           actual = _get_measured_value(metrics, alert["path"])
       except (KeyError, IndexError, ValueError, TypeError):
-          continue
+          continue  # not reporting (stopped container?), leave its state alone
       if not isinstance(actual, int | float):  # path points at something that isn't a number
           continue
-      if not OPS[alert["op"]](actual, alert["value"]): # comparing values, see OPS
-          continue
 
-      cooldown = alert.get("cooldown", 0) * 60  # minutes in config, need seconds
-      key = alert["path"]
-      if key in last_fired and (now - last_fired[key]) < cooldown:
-          continue
-
-      last_fired[key] = now
-      active.append({**alert, "measured": actual})
-  return active
+      key = rule_key(alert)
+      breached = OPS[alert["op"]](actual, alert["value"])  # comparing values, see OPS
+      since = state.since(key)
+      transition = state.update(key, breached, now, alert.get("remind", 0) * 60)  # minutes in config
+      if transition:
+          out[transition].append({**alert, "measured": actual, "since": since if since is not None else now})
+  state.prune(PREFIX, {rule_key(a) for a in alerts})
+  return out

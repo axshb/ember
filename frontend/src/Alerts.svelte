@@ -3,7 +3,7 @@
   import type { AlertRule, Config, Metric } from './types'
 
   const ops: [string, string][] = [['>', 'above'], ['<', 'below'], ['>=', 'at or above'], ['<=', 'at or below']]
-  const cooldowns: [number, string][] = [[0, 'no cooldown'], [5, '5 min cooldown'], [15, '15 min cooldown'], [60, '1 h cooldown'], [360, '6 h cooldown'], [1440, '1 day cooldown']]
+  const reminders: [number, string][] = [[0, 'no reminders'], [60, 'remind hourly'], [360, 'remind every 6 h'], [1440, 'remind daily']]
   const compare: Record<string, (a: number, b: number) => boolean> = {
     '>': (a, b) => a > b, '<': (a, b) => a < b, '>=': (a, b) => a >= b, '<=': (a, b) => a <= b,
   }
@@ -34,7 +34,7 @@
 
   function add() {
     const m = metrics[0]
-    config!.alerts.push({ path: m?.path ?? '', op: '>', value: m?.unit === '%' ? 80 : 0, cooldown: 15 })
+    config!.alerts.push({ path: m?.path ?? '', op: '>', value: m?.unit === '%' ? 80 : 0, remind: 0 })
   }
 
   async function save() {
@@ -53,7 +53,7 @@
 <div class="page-head">
   <div>
     <h2>Alerts</h2>
-    <p class="text-light">Checked every poll. When one fires, the agent investigates and sends a report.</p>
+    <p class="text-light">Checked every poll. When one fires, the agent investigates and sends a report. You get a short message when it clears.</p>
   </div>
   {#if config}<button class="outline" onclick={add} disabled={!metrics.length}>+ Add alert</button>{/if}
 </div>
@@ -87,9 +87,9 @@
             <input id="threshold-{i}" type="number" step="any" bind:value={rule.value} aria-label="Threshold" />
             {#if m}<label for="threshold-{i}">{m.unit}</label>{/if}
           </fieldset>
-          <select bind:value={rule.cooldown} aria-label="Cooldown" class="cooldown">
-            {#if !cooldowns.some(([v]) => v === rule.cooldown)}<option value={rule.cooldown}>{rule.cooldown} min cooldown</option>{/if}
-            {#each cooldowns as [v, label]}<option value={v}>{label}</option>{/each}
+          <select bind:value={rule.remind} aria-label="Reminders while firing" class="remind">
+            {#if !reminders.some(([v]) => v === rule.remind)}<option value={rule.remind}>remind every {rule.remind} min</option>{/if}
+            {#each reminders as [v, label]}<option value={v}>{label}</option>{/each}
           </select>
           <button class="ghost small remove" data-variant="danger" title="Remove alert" aria-label="Remove alert" onclick={() => config!.alerts.splice(i, 1)}>✕</button>
         </div>
@@ -131,7 +131,7 @@
   .sentence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
   .sentence > * { margin: 0; }
   .metric { flex: 1 1 100%; }
-  .op, .cooldown { width: auto; }
+  .op, .remind { width: auto; }
   .threshold { width: 8rem; }
   .remove { margin-left: auto; }
   @media (min-width: 769px) { .metric { flex-basis: 14rem; } }
