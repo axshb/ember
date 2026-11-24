@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 import docker
 from pydantic import BaseModel, Field
@@ -63,3 +64,26 @@ async def collect_container_metrics() -> list[ContainerMetrics]:
             network_tx=network.get("tx_bytes", 0),
         ))
     return metrics
+
+
+def container_states() -> list[dict]:
+    # lifecycle of every container, stopped ones too (one inspect each, no stats)
+    client = docker.from_env()
+    try:
+        containers = client.containers.list(all=True, ignore_removed=True)
+    finally:
+        client.close()
+    states = []
+    for c in containers:
+        s = c.attrs.get("State", {})
+        states.append({
+            "name": c.name,
+            "status": s.get("Status"),
+            "exit_code": s.get("ExitCode"),
+            "oom": s.get("OOMKilled", False),
+            "health": (s.get("Health") or {}).get("Status"),
+            "restarts": c.attrs.get("RestartCount", 0),
+            "finished": datetime.fromisoformat(s.get("FinishedAt") or "0001-01-01T00:00:00Z").timestamp(),
+            "policy": (c.attrs.get("HostConfig", {}).get("RestartPolicy") or {}).get("Name", ""),
+        })
+    return states

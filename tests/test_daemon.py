@@ -37,6 +37,13 @@ class TickTests(unittest.IsolatedAsyncioTestCase):
         self.sink = Mock(send=AsyncMock(), notify=AsyncMock())
         self.cfg = {"alerts": [{"path": "system.cpu.percent", "op": ">", "value": 80, "remind": 5}]}
         self.firing = {}
+        self.restarts = {}
+        self.containers = []  # or an exception: docker is down
+
+    def _containers(self):
+        if isinstance(self.containers, Exception):
+            raise self.containers
+        return self.containers
 
     async def poll(self, cpu, now, catalog=()):
         metrics = Mock()
@@ -49,8 +56,10 @@ class TickTests(unittest.IsolatedAsyncioTestCase):
             patch("main.run_alert", run_alert),
             patch("main.load_prompts"),
             patch("main.time.time", return_value=now),
+            patch("main.container_states", side_effect=self._containers),
+            patch("main.STARTED", 0),
         ):
-            await main.tick(self.cfg, self.store, {}, self.firing)
+            await main.tick(self.cfg, self.store, {}, self.firing, self.restarts)
         return run_alert
 
     async def test_fire_runs_triage_then_resolve_sends_a_short_notice(self):
@@ -97,6 +106,28 @@ class TickTests(unittest.IsolatedAsyncioTestCase):
     async def test_quiet_polls_write_nothing(self):
         await self.poll(10, 0)
         self.store.save_firing.assert_not_called()
+
+    async def test_container_crash_triages_then_resolves_when_running_again(self):
+        web = {"name": "web", "status": "running", "exit_code": 0, "oom": False, "health": None,
+               "restarts": 0, "finished": 0, "policy": "no"}
+        self.containers = [web]
+        await self.poll(10, 0)
+        self.containers = [{**web, "status": "exited", "exit_code": 1, "finished": 5}]
+        run_alert = await self.poll(10, 10)
+        self.assertEqual(run_alert.await_args.args[0], [{
+            "source": "docker", "problem": "crashed", "name": "web", "status": "exited", "exit_code": 1,
+            "oom": False, "health": None, "restarts": 0, "state": "fired",
+        }])
+        self.containers = [web]
+        await self.poll(10, 20)
+        await self.poll(10, 20 + 60 * 5)
+        self.sink.notify.assert_awaited_once_with("resolved", "Resolved: web crashed", "web is running again after 5m.")
+
+    async def test_docker_being_down_does_not_stop_metric_alerts(self):
+        self.containers = OSError("no socket")
+        with self.assertLogs("main", "WARNING"):
+            await self.poll(90, 0)
+        self.sink.send.assert_awaited_once()
 
     async def test_a_broken_sink_does_not_stop_the_others(self):
         broken = Mock(send=AsyncMock(side_effect=OSError("down")))

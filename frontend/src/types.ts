@@ -46,7 +46,7 @@ export interface Prompt {
 export interface Report {
   id: number
   time: number
-  alerts: (Omit<AlertRule, 'remind'> & { measured: number; state?: 'fired' | 'resolved' })[]
+  alerts: (MetricRecord | ContainerRecord)[]
   report: {
     title: string
     severity: 'info' | 'warning' | 'critical'
@@ -55,3 +55,7 @@ export interface Report {
     actions: string[]
   }
 }
+
+type WithState = { state?: 'fired' | 'resolved' }
+export type MetricRecord = Omit<AlertRule, 'remind'> & WithState & { source?: undefined; measured: number }
+export type ContainerRecord = WithState & { source: 'docker'; name: string; problem: 'crashed' | 'restarting' | 'unhealthy'; exit_code: number }

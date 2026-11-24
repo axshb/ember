@@ -9,7 +9,8 @@ from agent.agent import load_prompts, run_alert
 from agent.report import AlertReport, render_markdown
 from api.app import create_app
 from api.store import Store
-from daemon.alerts import check_alerts
+from daemon.alerts import check_alerts, check_containers
+from daemon.containers import container_states
 from daemon.metrics import catalog, collect_metrics
 from sinks import build_sinks
 
@@ -17,28 +18,40 @@ DB_PATH = os.environ.get("EMBER_DB", "data/ember.db")
 HOST = os.environ.get("EMBER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("EMBER_PORT", "8080"))
 
+STARTED = time.time()  # containers that died before this aren't news
+
 logger = logging.getLogger(__name__)
 
 
 async def daemon_loop(store: Store, latest: dict):
     firing = store.get_firing()
+    restarts = {}  # each container's restart count at the last poll
     while True:
         interval = 10
         # a bad config must not kill the loop, the UI to fix it lives in the same process
         try:
             cfg = store.get_config()  # re-read every tick so UI changes apply live
             interval = cfg["polling"]["interval"]
-            await tick(cfg, store, latest, firing)
+            await tick(cfg, store, latest, firing, restarts)
         except Exception:
             logger.exception("poll failed")
         await asyncio.sleep(interval)
 
 
-async def tick(cfg: dict, store: Store, latest: dict, firing: dict):
+async def tick(cfg: dict, store: Store, latest: dict, firing: dict, restarts: dict):
     metrics = await collect_metrics()
     latest["metrics"] = metrics
+    try:
+        containers = await asyncio.to_thread(container_states)
+    except Exception as e:
+        logger.warning("can't read container states, skipping container alerts: %s", e)
+        containers = None
+
     now = time.time()
     fired, resolved, reminders = check_alerts(metrics.model_dump(), cfg["alerts"], firing, now)
+    if containers is not None:
+        more_fired, more_resolved = check_containers(containers, firing, restarts, STARTED, now)
+        fired, resolved = fired + more_fired, resolved + more_resolved
     if not (fired or resolved or reminders):
         return
     # memory is already updated, so a crash below never sends or triages twice. saved before
@@ -57,7 +70,7 @@ async def tick(cfg: dict, store: Store, latest: dict, firing: dict):
     labels = {m["path"]: m for m in catalog(metrics)}
     for kind, alerts in (("resolved", resolved), ("remind", reminders)):
         for alert in alerts:
-            title, text = notice(kind, alert, labels.get(alert["path"]), now)
+            title, text = notice(kind, alert, labels.get(alert.get("path")), now)
             await _send(sinks, lambda sink: sink.notify(kind, title, text))
             if kind == "resolved":
                 _db_write(store.add_report, [_record(alert, kind)], AlertReport(title=title, severity="info", summary=text).model_dump())
@@ -80,10 +93,17 @@ async def _send(sinks, send):
 
 
 def _record(alert: dict, kind: str) -> dict:
-    return {**{k: alert[k] for k in ("path", "op", "value", "measured")}, "state": kind}
+    # only what the agent and history need
+    return {**{k: v for k, v in alert.items() if k not in ("remind", "since", "finished", "policy")}, "state": kind}
+
+
+RECOVERED = {"crashed": "running again", "restarting": "staying up again", "unhealthy": "healthy again"}
 
 
 def notice(kind: str, alert: dict, info: dict | None, now: float) -> tuple[str, str]:
+    if alert.get("source") == "docker":  # containers never remind, only resolve
+        took = duration(now - alert["since"])
+        return f"Resolved: {alert['name']} {alert['problem']}"[:120], f"{alert['name']} is {RECOVERED[alert['problem']]} after {took}."
     label = info["label"] if info else alert["path"]
     unit = info["unit"] if info else ""
 

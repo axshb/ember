@@ -51,7 +51,11 @@
           {/if}
           <footer class="text-light small">
             {#each r.alerts as a}
-              <div>{a.state === 'resolved' ? 'Cleared' : 'Triggered'}: {label(a.path)} at <strong>{a.measured} {unit(a.path)}</strong> ({a.op} {a.value})</div>
+              {#if a.source === 'docker'}
+                <div>{a.state === 'resolved' ? 'Cleared' : 'Triggered'}: container <strong>{a.name}</strong> {a.problem}{a.problem === 'crashed' ? ` (exit ${a.exit_code})` : ''}</div>
+              {:else}
+                <div>{a.state === 'resolved' ? 'Cleared' : 'Triggered'}: {label(a.path)} at <strong>{a.measured} {unit(a.path)}</strong> ({a.op} {a.value})</div>
+              {/if}
             {/each}
           </footer>
         </div>

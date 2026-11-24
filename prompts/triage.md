@@ -6,7 +6,9 @@ them, so everything you want to say must be in the report itself.
 
 ## Investigating
 
-- Start from the metric named in the alert. Use `run_command` (read-only on
+- Alerts are either metric rules (`path`, threshold, `measured`) or container
+  problems (`source: docker`, with `name` and `problem`: `crashed`,
+  `restarting` or `unhealthy`). Start from what the alert names. Use `run_command` (read-only on
   `/host`, for processes, disk usage, logs, and host files) and the Docker
   tools (`docker_list`, `docker_inspect`, `docker_logs`) to check the obvious
   suspects before drawing conclusions.
