@@ -180,17 +180,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/import", json=data, headers=JSON).json(), {"ok": True})
         self.assertEqual(self.store.get_config()["alerts"], [{"path": "system.memory.percent", "op": ">", "value": 90, "remind": 0}])
 
-    def test_alert_state_round_trips(self):
-        self.store.save_alert_state("metric:x > 1", {"since": 1, "notified": 1, "clear_since": None})
-        self.assertEqual(self.store.load_alert_state(), {"metric:x > 1": {"since": 1, "notified": 1, "clear_since": None}})
-        self.store.delete_alert_state("metric:x > 1")
-        self.assertEqual(self.store.load_alert_state(), {})
-
-    def test_bad_alert_state_rows_are_dropped_and_state_survives_a_real_restart(self):
-        from daemon.state import AlertState
-
-        self.store.db.execute("INSERT INTO alert_state VALUES ('junk', 'not json'), ('half', '{\"since\": 1}')")
-        state = AlertState(self.store)
-        self.assertEqual(state.firing, {})
-        self.assertEqual(state.update("metric:a", True, 0), "fired")
-        self.assertEqual(AlertState(self.store).update("metric:a", True, 10), None)
+    def test_firing_state_round_trips(self):
+        self.assertEqual(self.store.get_firing(), {})
+        self.store.save_firing({"x > 1": {"since": 1}})
+        self.assertEqual(self.store.get_firing(), {"x > 1": {"since": 1}})

@@ -1,12 +1,12 @@
 import ipaddress
 import math
 import os
-import socket
 from pathlib import Path
 
 import psutil
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -28,8 +28,7 @@ def _error(message: str) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=400)
 
 
-def _number(v) -> bool:
-    # json allows NaN/Infinity, and an infinite poll interval would hang the loop
+def _number(v) -> bool:  # json allows NaN/Infinity, an infinite poll interval hangs the loop
     return isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
 
 
@@ -63,55 +62,30 @@ def _validate(cfg: dict) -> str | None:
     return None
 
 
-def _ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
-    ip = ipaddress.ip_address(host.split("%")[0])  # drop ipv6 zone, e.g. fe80::1%eth0
-    return getattr(ip, "ipv4_mapped", None) or ip
-
-
 def _is_local(host: str) -> bool:
     try:
-        ip = _ip(host)
+        ip = ipaddress.ip_address(host.split("%")[0])
     except ValueError:
         return True  # can't tell who it is, refuse
-    return ip.is_loopback or any(
-        _ip(a.address) == ip
-        for addrs in psutil.net_if_addrs().values() for a in addrs
-        if a.family in (socket.AF_INET, socket.AF_INET6)
-    )
-
-
-# the agent shell shares our network namespace and could otherwise use the API (redirect
-# sinks, leak secrets via a new email host, rewrite prompts). it can only connect from a
-# local address; browsers come in through docker's port forward. only enforced when shell
-# commands are sandboxed (running as root), so local `uv run` still works
-class NoLocalClients:
-    def __init__(self, app, enabled: bool):
-        self.app = app
-        self.enabled = enabled
-
-    async def __call__(self, scope, receive, send):
-        if self.enabled and scope["type"] == "http" and _is_local((scope.get("client") or ("?",))[0]):
-            await JSONResponse({"error": "forbidden"}, status_code=403)(scope, receive, send)
-            return
-        await self.app(scope, receive, send)
-
-
-# other sites can't send json with a plain form post, so this blocks cross-site writes
-class JSONWritesOnly:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope["method"] not in ("GET", "HEAD") and scope["path"].startswith("/api/"):
-            content_type = dict(scope["headers"]).get(b"content-type", b"")
-            if not content_type.startswith(b"application/json"):
-                await JSONResponse({"error": "expected application/json"}, status_code=415)(scope, receive, send)
-                return
-        await self.app(scope, receive, send)
+    ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:127.0.0.1
+    own = {a.address.split("%")[0] for addrs in psutil.net_if_addrs().values() for a in addrs}
+    return ip.is_loopback or str(ip) in own
 
 
 def create_app(store: Store, latest: dict) -> Starlette:
-    # latest["metrics"] is set by the daemon loop each tick
+    sandboxed = os.geteuid() == 0
+
+    async def guard(request: Request, call_next):
+        # the agent shell shares our network, so it would connect from one of our own addresses.
+        # browsers come in through docker's port forward. only enforced when the shell is
+        # sandboxed (we're root), so a local `uv run` still works
+        if sandboxed and _is_local(request.client.host if request.client else "?"):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        # a plain cross-site form post can't send json, so this blocks cross-site writes
+        if request.method not in ("GET", "HEAD") and not request.headers.get("content-type", "").startswith("application/json"):
+            return JSONResponse({"error": "expected application/json"}, status_code=415)
+        return await call_next(request)
+
     async def get_config(request: Request):
         return JSONResponse(without_secrets(store.get_config(), MASK))
 
@@ -201,7 +175,6 @@ def create_app(store: Store, latest: dict) -> Starlette:
     # host check blocks DNS rebinding
     extra_hosts = [h.strip() for h in os.environ.get("EMBER_ALLOWED_HOSTS", "").split(",") if h.strip()]
     return Starlette(routes=routes, middleware=[
-        Middleware(NoLocalClients, enabled=os.geteuid() == 0),
         Middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", *extra_hosts]),
-        Middleware(JSONWritesOnly),
+        Middleware(BaseHTTPMiddleware, dispatch=guard),
     ])

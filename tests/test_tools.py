@@ -121,7 +121,8 @@ class RunCommandTests(unittest.IsolatedAsyncioTestCase):
 
 class PrivilegeDropTests(unittest.IsolatedAsyncioTestCase):
     async def test_drops_privileges_only_as_root(self):
-        proc = Mock(pid=999_999_999, returncode=0, stdout=None, stderr=None, wait=AsyncMock(return_value=0))
+        empty = Mock(read=AsyncMock(return_value=b""))
+        proc = Mock(pid=999_999_999, returncode=0, stdout=empty, stderr=empty, wait=AsyncMock(return_value=0))
         spawn = AsyncMock(return_value=proc)
         with patch("agent.tools.asyncio.create_subprocess_exec", spawn), patch("agent.tools.os.killpg"):
             with patch("agent.tools.os.geteuid", return_value=0):

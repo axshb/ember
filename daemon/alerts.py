@@ -1,5 +1,4 @@
 import operator
-from time import time
 
 OPS = {
   ">": operator.gt,
@@ -25,31 +24,41 @@ def _get_measured_value(data, path: str):
       data, i = data[parts[i]], i + 1
   return data
 
-PREFIX = "metric:"
+RESOLVE_AFTER = 60  # seconds a rule has to stay clear before it resolves, stops flapping
 
 
-def rule_key(rule: dict) -> str:
-  # editing a threshold makes it a new rule with fresh state
-  return f"{PREFIX}{rule['path']} {rule['op']} {rule['value']}"
+def check_alerts(metrics, rules, firing: dict, now: float):
+  """Updates `firing` in place, returns the alerts that fired, resolved and need a reminder."""
+  fired, resolved, reminders = [], [], []
+  keys = set()
+  for rule in rules:
+    key = f"{rule['path']} {rule['op']} {rule['value']}"  # editing a threshold starts fresh
+    keys.add(key)
+    try:
+      value = _get_measured_value(metrics, rule["path"])
+    except (KeyError, IndexError, ValueError, TypeError):
+      continue  # not reporting right now (stopped container?), keep its state
+    if not isinstance(value, int | float):
+      continue
 
+    alert = {**rule, "measured": value}
+    state = firing.get(key)
+    if OPS[rule["op"]](value, rule["value"]):
+      if state is None:
+        firing[key] = {"since": now, "notified": now, "clear_since": None}
+        fired.append(alert)
+        continue
+      state["clear_since"] = None
+      if rule.get("remind") and now - state["notified"] >= rule["remind"] * 60:
+        state["notified"] = now
+        reminders.append({**alert, "since": state["since"]})
+    elif state is not None:
+      if state["clear_since"] is None:
+        state["clear_since"] = now
+      if now - state["clear_since"] >= RESOLVE_AFTER:
+        del firing[key]
+        resolved.append({**alert, "since": state["since"]})
 
-def check_alerts(metrics, alerts, state, now: float | None = None) -> dict[str, list[dict]]:
-  """Feed every rule through `state`, return the rules that changed, grouped by transition."""
-  now = time() if now is None else now
-  out = {"fired": [], "resolved": [], "remind": []}
-  for alert in alerts:
-      try:
-          actual = _get_measured_value(metrics, alert["path"])
-      except (KeyError, IndexError, ValueError, TypeError):
-          continue  # not reporting (stopped container?), leave its state alone
-      if not isinstance(actual, int | float):  # path points at something that isn't a number
-          continue
-
-      key = rule_key(alert)
-      breached = OPS[alert["op"]](actual, alert["value"])  # comparing values, see OPS
-      since = state.since(key)
-      transition = state.update(key, breached, now, alert.get("remind", 0) * 60)  # minutes in config
-      if transition:
-          out[transition].append({**alert, "measured": actual, "since": since if since is not None else now})
-  state.prune(PREFIX, {rule_key(a) for a in alerts})
-  return out
+  for key in firing.keys() - keys:
+    del firing[key]  # rule was deleted or edited
+  return fired, resolved, reminders

@@ -32,51 +32,36 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _timeout(value, fallback: float) -> float:
-    # None, <= 0 and NaN fall back; everything else is capped (inf included)
-    if value is None or not float(value) > 0:
-        return fallback
-    return min(float(value), MAX_TIMEOUT)
+    # None, <= 0 and NaN fall back, anything else is capped (inf included)
+    return min(float(value), MAX_TIMEOUT) if value is not None and float(value) > 0 else fallback
 
 
 async def _read_tail(stream, max_bytes: int) -> bytes:
-    # read to EOF, keep only the last max_bytes
-    if stream is None:
-        return b""
+    # keep only the last max_bytes, a command can print gigabytes
     buf = bytearray()
     while chunk := await stream.read(8192):
         buf.extend(chunk)
-        if len(buf) > max_bytes:
-            del buf[: len(buf) - max_bytes]
+        del buf[:-max_bytes]
     return bytes(buf)
 
 
-async def _kill_process_group(proc, grace: float = 1.0) -> None:
-    # TERM the group, then KILL survivors (orphaned children, TERM trappers)
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(proc.pid, sig)
-        except (ProcessLookupError, PermissionError):
-            return
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(proc.wait(), _read_tail(proc.stdout, 0), _read_tail(proc.stderr, 0)),
-                timeout=grace,
-            )
-        except TimeoutError:
-            pass
-
-
-def _with_docker(fn):
-    client = docker.from_env()
+def _kill(proc) -> None:
+    # the whole process group, so nothing it started in the background survives
     try:
-        return fn(client)
-    finally:
-        client.close()
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
-async def _docker_call(fn, container: str = "") -> str:
+async def _docker(fn, container: str = "") -> str:
+    def call():
+        client = docker.from_env()
+        try:
+            return fn(client)
+        finally:
+            client.close()
     try:
-        return await asyncio.to_thread(_with_docker, fn)
+        return await asyncio.to_thread(call)
     except NotFound:
         return f"Container not found: {container}"
     except (DockerException, OSError) as e:
@@ -104,13 +89,8 @@ def build_tools(cfg: dict) -> list:
         timeout = _timeout(timeout_seconds, default_timeout)
         try:
             proc = await asyncio.create_subprocess_exec(
-                "/bin/sh", "-c", command,
-                cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                start_new_session=True,
-                env=CLEAN_SHELL_ENV,
-                **drop_privs,
+                "/bin/sh", "-c", command, cwd=cwd, env=CLEAN_SHELL_ENV, start_new_session=True,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, **drop_privs,
             )
         except OSError as e:
             logger.warning("shell command failed to start: %s", e)
@@ -118,31 +98,18 @@ def build_tools(cfg: dict) -> list:
 
         max_bytes = max_output_chars * 4
         try:
-            stdout, stderr, _ = await asyncio.wait_for(
-                asyncio.gather(
-                    _read_tail(proc.stdout, max_bytes),
-                    _read_tail(proc.stderr, max_bytes),
-                    proc.wait(),
-                ),
-                timeout=timeout,
-            )
+            stdout, stderr, _ = await asyncio.wait_for(asyncio.gather(
+                _read_tail(proc.stdout, max_bytes), _read_tail(proc.stderr, max_bytes), proc.wait(),
+            ), timeout)
         except TimeoutError:
-            await _kill_process_group(proc)
             return f"[Command timed out after {timeout}s]"
-        except BaseException:
-            await _kill_process_group(proc)
-            raise
-
-        # kill anything the command left running in the background
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+        finally:
+            _kill(proc)  # on timeout, cancel and normal exit alike
 
         parts = []
-        if out := stdout.decode("utf-8", errors="replace"):
+        if out := stdout.decode(errors="replace"):
             parts.append(f"[stdout]\n{out}")
-        if err := stderr.decode("utf-8", errors="replace"):
+        if err := stderr.decode(errors="replace"):
             parts.append(f"[stderr]\n{err}")
         parts.append(f"[exit code: {proc.returncode}]")
         return _truncate("\n".join(parts), max_output_chars)
@@ -163,7 +130,7 @@ def build_tools(cfg: dict) -> list:
                 })
             return json.dumps(items, indent=2)
 
-        return await _docker_call(fetch)
+        return await _docker(fetch)
 
     async def docker_inspect(container: str) -> str:
         """Inspect a container's state, restart policy, resource limits, mounts, and env key names."""
@@ -188,7 +155,7 @@ def build_tools(cfg: dict) -> list:
                 "env_keys": [e.split("=", 1)[0] for e in config.get("Env") or []],
             }, indent=2)
 
-        return await _docker_call(fetch, container)
+        return await _docker(fetch, container)
 
     async def docker_logs(container: str, tail: int = 200, since_minutes: int | None = None) -> str:
         """Fetch recent logs for a container.
@@ -204,6 +171,6 @@ def build_tools(cfg: dict) -> list:
             raw = client.containers.get(container).logs(tail=tail, since=since, timestamps=True)
             return _truncate(raw.decode("utf-8", errors="replace"), max_output_chars)
 
-        return await _docker_call(fetch, container)
+        return await _docker(fetch, container)
 
     return [run_command, docker_list, docker_inspect, docker_logs]

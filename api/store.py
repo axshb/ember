@@ -39,9 +39,11 @@ class Store:
             CREATE TABLE IF NOT EXISTS reports (
                 id INTEGER PRIMARY KEY, time REAL NOT NULL, alerts TEXT NOT NULL, report TEXT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS alert_state (key TEXT PRIMARY KEY, data TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS firing (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL);
+            DROP TABLE IF EXISTS alert_state;
         """)
         self.db.execute("INSERT OR IGNORE INTO config VALUES (1, ?)", (json.dumps(DEFAULT_CONFIG),))
+        self.db.execute("INSERT OR IGNORE INTO firing VALUES (1, '{}')")
         self.db.commit()
 
     def get_config(self) -> dict:
@@ -73,25 +75,12 @@ class Store:
         )
         self.db.commit()
 
-    def load_alert_state(self) -> dict[str, dict]:
-        # a bad row is dropped (the alert just fires again) rather than killing the daemon
-        out = {}
-        for key, data in self.db.execute("SELECT key, data FROM alert_state"):
-            try:
-                entry = json.loads(data)
-                if isinstance(entry["since"], int | float) and isinstance(entry["notified"], int | float) \
-                        and isinstance(entry["clear_since"], int | float | None):
-                    out[key] = entry
-            except (ValueError, KeyError, TypeError):
-                pass
-        return out
+    def get_firing(self) -> dict:
+        # what's firing, so a restart doesn't re-fire everything still breached
+        return json.loads(self.db.execute("SELECT data FROM firing").fetchone()[0])
 
-    def save_alert_state(self, key: str, entry: dict) -> None:
-        self.db.execute("INSERT OR REPLACE INTO alert_state VALUES (?, ?)", (key, json.dumps(entry)))
-        self.db.commit()
-
-    def delete_alert_state(self, key: str) -> None:
-        self.db.execute("DELETE FROM alert_state WHERE key = ?", (key,))
+    def save_firing(self, firing: dict) -> None:
+        self.db.execute("UPDATE firing SET data = ?", (json.dumps(firing),))
         self.db.commit()
 
     def recent_reports(self) -> list[dict]:
@@ -103,11 +92,9 @@ class Store:
 
 
 def migrate(cfg: dict) -> dict:
-    # "cooldown" re-fired full triage every N minutes while breached. alerts are stateful now
-    # and "remind" means something else, so old cooldowns are dropped rather than converted
-    for rule in cfg.get("alerts", []) if isinstance(cfg.get("alerts"), list) else []:
-        if isinstance(rule, dict) and "cooldown" in rule:
-            rule.pop("cooldown")
+    # cooldown meant "re-run triage every N min", remind is different, so it's dropped
+    for rule in cfg.get("alerts") if isinstance(cfg.get("alerts"), list) else []:
+        if isinstance(rule, dict) and rule.pop("cooldown", None) is not None:
             rule.setdefault("remind", 0)
     return cfg
 
