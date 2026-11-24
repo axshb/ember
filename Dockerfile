@@ -1,3 +1,12 @@
+FROM oven/bun:1.3 AS frontend
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY frontend/ ./
+RUN bun run build
+
+
 FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,9 +20,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 agent \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin agent \
-    && mkdir -p /run/ember \
-    && chown root:root /run/ember \
-    && chmod 0700 /run/ember
+    && mkdir -p /run/ember /data \
+    && chmod 0700 /run/ember /data
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
@@ -24,5 +32,6 @@ RUN uv sync --frozen --no-install-project
 
 COPY . .
 RUN uv sync --frozen
+COPY --from=frontend /frontend/dist ./frontend/dist
 
 CMD ["python", "main.py"]

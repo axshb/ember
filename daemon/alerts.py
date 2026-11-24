@@ -6,18 +6,23 @@ OPS = {
   "<": operator.lt,
   ">=": operator.ge,
   "<=": operator.le,
-  "==": operator.eq,
 }
 
 def _get_measured_value(data, path: str):
-  for part in path.split("."):
+  parts = path.split(".")
+  i = 0
+  while i < len(parts):
     if isinstance(data, list):
-      if part.isdigit():
-        data = data[int(part)]
+      # names can contain dots (swarm tasks are svc.1.id), try the longest match first
+      for j in range(len(parts), i, -1):
+        match = next((d for d in data if d.get("name") == ".".join(parts[i:j])), None)
+        if match is not None:
+          data, i = match, j
+          break
       else:
-        data = next(d for d in data if d.get("name") == part)
+        data, i = data[int(parts[i])], i + 1  # by index, ValueError if not a number
     else:
-      data = data[part]
+      data, i = data[parts[i]], i + 1
   return data
 
 def check_alerts(metrics, alerts, last_fired: dict) -> list[dict]:
@@ -26,7 +31,9 @@ def check_alerts(metrics, alerts, last_fired: dict) -> list[dict]:
   for alert in alerts:
       try:
           actual = _get_measured_value(metrics, alert["path"])
-      except (KeyError, IndexError, StopIteration):
+      except (KeyError, IndexError, ValueError, TypeError):
+          continue
+      if not isinstance(actual, int | float):  # path points at something that isn't a number
           continue
       if not OPS[alert["op"]](actual, alert["value"]): # comparing values, see OPS
           continue

@@ -12,9 +12,10 @@ class EmailSink:
     def __init__(self, cfg: dict):
         self.host = cfg["host"]
         self.port = int(cfg.get("port", 587))
-        self.username = cfg.get("username")
-        self.password = cfg.get("password")
-        self.sender = cfg.get("from", self.username)
+        # the UI stores "" for unset fields, None skips SMTP login
+        self.username = cfg.get("username") or None
+        self.password = cfg.get("password") or None
+        self.sender = cfg.get("from") or self.username
         recipients = cfg["to"]
         self.recipients = recipients if isinstance(recipients, list) else [recipients]
         self.starttls = cfg.get("starttls", True)

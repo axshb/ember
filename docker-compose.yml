@@ -16,25 +16,27 @@ services:
       - KILL
     security_opt:
       - no-new-privileges:true
+
+    # localhost only, published ports bypass ufw
+    ports:
+      - "127.0.0.1:7340:8080"
+
     environment:
       - DOCKER_HOST=unix:///run/ember/docker.sock
-      - EMBER_CONFIG=/run/ember/config.toml
+      - EMBER_DB=/data/ember.db
+      - EMBER_HOST=0.0.0.0
+      # hostnames used via a reverse proxy / tailscale
+      # - EMBER_ALLOWED_HOSTS=ember.example.ts.net
 
     volumes:
-      # Docker socket inside root-only /run/ember (mode 0700) — daemon and
-      # read-only docker_* tools can reach it, shell commands (UID 10001) cannot
+      # inside root-only /run/ember, so agent shell commands can't reach it
       - /var/run/docker.sock:/run/ember/docker.sock:ro
 
-      # Host filesystem read-only at /host — agent shell investigation
+      # host filesystem for agent shell commands
       - /:/host:ro
 
-      # Config (gitignored, contains secrets) inside root-only /run/ember (mode 0700)
-      # so shell commands (UID 10001) cannot read API keys or webhook URLs
-      - ./config.toml:/run/ember/config.toml:ro
+      # config, prompts and history (sqlite), deleted only by `down -v`
+      - ember-data:/data
 
-      # Custom prompts (gitignored, user-specific) — read-only,
-      # override same-named files in config/defaults/prompts/
-      - ./config/prompts:/app/config/prompts:ro
-
-    # App config comes from TOML only (no config env fallbacks).
-    # If config.toml doesn't exist, the app will print a helpful error.
+volumes:
+  ember-data:

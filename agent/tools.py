@@ -39,7 +39,7 @@ def _timeout(value, fallback: float) -> float:
 
 
 async def _read_tail(stream, max_bytes: int) -> bytes:
-    """Read a stream to EOF, keeping only the last max_bytes."""
+    # read to EOF, keep only the last max_bytes
     if stream is None:
         return b""
     buf = bytearray()
@@ -51,8 +51,7 @@ async def _read_tail(stream, max_bytes: int) -> bytes:
 
 
 async def _kill_process_group(proc, grace: float = 1.0) -> None:
-    # SIGTERM the whole group, then SIGKILL whatever survived
-    # (background children outliving sh, processes trapping TERM)
+    # TERM the group, then KILL survivors (orphaned children, TERM trappers)
     for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(proc.pid, sig)

@@ -5,56 +5,71 @@ metrics, evaluates threshold alerts, has an LLM agent triage what fired (using
 sandboxed shell and read-only Docker tools), and sends a structured report to
 your sinks. Nothing listens for replies — every sink is one-way.
 
+Everything is configured from a small web UI: alert rules, the agent, sinks,
+and the agent's prompts. Recent reports show up there too.
+
+## Run
+
+    docker compose up -d --build
+
+then open http://localhost:7340. On a remote server, use an SSH tunnel
+(`ssh -L 7340:localhost:7340 yourserver`) or put tailscale/caddy/etc. in front.
+If you reach it through another hostname, add it to `EMBER_ALLOWED_HOSTS` in
+`docker-compose.yml`; requests with any other `Host` header are rejected.
+
+Ember has no login of its own. The port is published on `127.0.0.1` only —
+keep it that way unless something with auth sits in front, since
+docker-published ports bypass ufw.
+
+Or locally (UI on http://localhost:8080, data in `./data`):
+
+    cd frontend && bun install && bun run build && cd ..
+    uv run python main.py
+
 ## Sinks
 
 - **discord** — webhook. Create one in your notification channel
-  (Settings → Integrations → Webhooks) and set `[discord] webhook_url`.
-  Reports arrive as embeds, color-coded by severity.
-- **email** — plain SMTP, STARTTLS by default (`[email]` section).
-- slack / telegram — not implemented; toggles are reserved in `[sinks]`.
+  (Settings → Integrations → Webhooks). Reports arrive as embeds,
+  color-coded by severity.
+- **email** — plain SMTP, STARTTLS by default.
 
-## Configuration
+With no sink enabled, reports still land in the UI's history.
 
-Copy `config.example.toml` to `config.toml` in the repo root and fill it in.
-Secrets live only in `config.toml`, which is gitignored.
+## Data
 
-### Prompts
+Config, prompt overrides and the last 50 reports live in one sqlite file in
+the `ember-data` volume. It survives rebuilds and image deletion; only
+`docker compose down -v` removes it. Settings has an export/import button for
+backups — exports never contain secrets (API key, webhook URL, SMTP password).
 
-The agent's instructions are every `*.md` file in `config/prompts/` plus
-`config/defaults/prompts/`, concatenated in sorted filename order — no
-filenames are hardcoded. A file in `config/prompts/` (gitignored) overrides
-the same-named default wholesale; nothing is copied or merged at startup, so
-`git pull` can never overwrite your customizations.
+## Prompts
 
-`config/defaults/prompts/triage.md` is the out-of-the-box triage prompt;
-override it by creating your own `config/prompts/triage.md`, or add new
-`*.md` files alongside it.
+The agent's instructions are the `*.md` files in `prompts/`, concatenated in
+filename order. Each can be overridden from the UI and reset back to the
+default.
+
+## Security
+
+The container runs with a read-only root filesystem, a bounded `noexec` `/tmp`,
+dropped capabilities (keeping only `SETUID`, `SETGID`, and `KILL`),
+`no-new-privileges`, pid/memory limits, and `/` mounted read-only at `/host`.
+The Docker socket is mounted inside a root-only directory (`/run/ember`, mode
+`0700`) so the daemon and read-only `docker_*` tools can use it, while shell
+commands run as UID `10001` with a clean environment.
+
+The web UI refuses connections from inside the container, so shell commands
+can't use it. A path back in through the host (the port published on
+`0.0.0.0`, or a reverse proxy without auth) would look like a normal client;
+the default `127.0.0.1` publish doesn't have one.
+
+Shell commands can still read anything world-readable on the host through
+`/host`, see host process command lines, and make network connections. Don't
+keep secrets world-readable or in command-line arguments, and keep the host
+Docker socket at its default permissions (`0660 root:docker`): if it is
+world-writable, shell commands can reach it at `/host/var/run/docker.sock`.
 
 ## Tests
 
     uv run pytest
 
 Tests mock external calls; no API keys, Docker daemon, or notification services required.
-
-## Run
-
-    docker compose up -d --build
-
-or locally:
-
-    uv run python main.py
-
-The container runs with a read-only root filesystem, a bounded `noexec` `/tmp`,
-dropped capabilities (keeping only `SETUID`, `SETGID`, and `KILL`),
-`no-new-privileges`, `/` mounted read-only at `/host`, and `config/prompts`
-mounted read-only. Both the Docker socket and `config.toml` are mounted inside
-a root-only directory (`/run/ember`, mode `0700`) so the daemon and read-only
-`docker_*` tools can use them, while shell commands run as UID `10001` with a
-clean environment.
-
-Shell commands can still read anything world-readable on the host through
-`/host`. Make `config.toml` root-owned and private on the host
-(`sudo chown root:root config.toml && sudo chmod 600 config.toml`; the
-container can't bypass file permissions), and keep the host Docker
-socket at its default permissions (`0660 root:docker`): if it is
-world-writable, shell commands can reach it at `/host/var/run/docker.sock`.

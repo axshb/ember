@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from docker.errors import DockerException, NotFound
 
-import main
 from agent.tools import AGENT_GID, AGENT_UID, CLEAN_SHELL_ENV, MAX_TIMEOUT, _timeout, _truncate, build_tools
 
 
@@ -63,13 +62,6 @@ class HelperTests(unittest.TestCase):
         for raw, expected in [(None, 30), (0, 30), (-5, 30), (float("nan"), 30), (5, 5), (float("inf"), MAX_TIMEOUT)]:
             with self.subTest(raw=raw):
                 self.assertEqual(_timeout(raw, 30), expected)
-
-    def test_load_config_respects_ember_config_env(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg_path = Path(tmpdir) / "custom.toml"
-            cfg_path.write_text("[polling]\ninterval = 42\n")
-            with patch.dict(os.environ, {"EMBER_CONFIG": str(cfg_path)}):
-                self.assertEqual(main.load_config(), {"polling": {"interval": 42}})
 
 
 @needs_non_root

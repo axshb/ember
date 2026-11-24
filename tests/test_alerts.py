@@ -29,8 +29,6 @@ class AlertTests(unittest.TestCase):
             ("<", 91, True),
             (">=", 90, True),
             ("<=", 90, True),
-            ("==", 90, True),
-            ("==", 89, False),
         ]:
             with self.subTest(op=op, threshold=threshold):
                 alert = {**self.alert, "op": op, "value": threshold}
@@ -47,6 +45,17 @@ class AlertTests(unittest.TestCase):
                     check_alerts(self.metrics, [alert], {}),
                     [{**alert, "measured": 512}],
                 )
+
+    def test_dotted_container_names_resolve(self):
+        metrics = {"containers": [{"name": "svc", "cpu": 1}, {"name": "svc.1.abc", "cpu": 95}]}
+        alert = {"path": "containers.svc.1.abc.cpu", "op": ">", "value": 90}
+        self.assertEqual(check_alerts(metrics, [alert], {}), [{**alert, "measured": 95}])
+
+    def test_paths_to_non_numbers_are_skipped(self):
+        metrics = {"system": {"cpu": {"name": "cpu", "used": None, "percent": 90}}}
+        for path in ("system.cpu.name", "system.cpu.used", "system.cpu", "system.cpu.percent.x"):
+            with self.subTest(path=path):
+                self.assertEqual(check_alerts(metrics, [{"path": path, "op": ">", "value": 1}], {}), [])
 
     def test_missing_metrics_are_skipped(self):
         alerts = [

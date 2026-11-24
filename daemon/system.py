@@ -1,21 +1,28 @@
-from pydantic import BaseModel
+import asyncio
 import logging
+
 import psutil
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 class SystemMetrics(BaseModel):
-    cpu: ComponentMetrics
-    memory: ComponentMetrics
-    disks: list[ComponentMetrics]
+    cpu: ComponentMetrics = Field(json_schema_extra={"label": "CPU"})
+    memory: ComponentMetrics = Field(json_schema_extra={"label": "memory"})
+    disks: list[ComponentMetrics] = Field(json_schema_extra={"label": "disk"})
 
 class ComponentMetrics(BaseModel):
     name: str
-    percent: float
-    used: float | None = None
+    # fields with a unit show up as alertable in the UI
+    percent: float = Field(json_schema_extra={"label": "usage", "unit": "%"})
+    used: float | None = Field(None, json_schema_extra={"label": "used", "unit": "GB"})
     total: float | None = None
 
 async def collect_system_metrics() -> SystemMetrics:
+    # cpu_percent(interval=1) sleeps, keep it off the event loop
+    return await asyncio.to_thread(_collect_system_metrics)
+
+def _collect_system_metrics() -> SystemMetrics:
     results = []
     results.append(_collect_cpu_metrics())
     results.append(_collect_memory_metrics())

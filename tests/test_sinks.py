@@ -82,6 +82,14 @@ class SinkSendTests(unittest.IsolatedAsyncioTestCase):
                     "start_tls": True,
                 })
 
+    async def test_email_treats_blank_ui_fields_as_unset(self):
+        sink = EmailSink({"host": "relay.local", "port": 25, "username": "", "password": "",
+                          "from": "", "to": "ash@example.com", "starttls": False})
+        with patch("sinks.email.aiosmtplib.send", new_callable=AsyncMock) as send:
+            await sink.send(AlertReport(title="Alert", summary="Details"), "Report body")
+        self.assertIsNone(send.call_args.kwargs["username"])  # no AUTH against open relays
+        self.assertIsNone(send.call_args.kwargs["password"])
+
     async def test_email_logs_delivery_failure(self):
         sink = EmailSink({"host": "smtp.example.com", "from": "ember@example.com", "to": "ash@example.com"})
         with patch("sinks.email.aiosmtplib.send", new_callable=AsyncMock, side_effect=OSError("offline")):
