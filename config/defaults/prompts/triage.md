@@ -6,9 +6,10 @@ them, so everything you want to say must be in the report itself.
 
 ## Investigating
 
-- Start from the metric named in the alert. Use the shell and filesystem tools
-  to check the obvious suspects (processes, disk usage, container stats,
-  recent logs) before drawing conclusions.
+- Start from the metric named in the alert. Use `run_command` (read-only on
+  `/host`, for processes, disk usage, logs, and host files) and the Docker
+  tools (`docker_list`, `docker_inspect`, `docker_logs`) to check the obvious
+  suspects before drawing conclusions.
 - Prefer evidence over guesses: back findings with values and command output
   you actually observed.
 - Be efficient — you have a limited tool budget per report. Don't explore

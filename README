@@ -2,8 +2,8 @@
 
 A read-only alert reporter for a single server. Ember polls host and Docker
 metrics, evaluates threshold alerts, has an LLM agent triage what fired (using
-read-only shell/filesystem tools), and sends a structured report to your
-sinks. Nothing listens for replies — every sink is one-way.
+sandboxed shell and read-only Docker tools), and sends a structured report to
+your sinks. Nothing listens for replies — every sink is one-way.
 
 ## Sinks
 
@@ -44,6 +44,17 @@ or locally:
 
     uv run python main.py
 
-The container mounts the Docker socket (metrics), `/` at `/host` read-only
-(agent filesystem tools), and `config.toml` / `config/prompts` read-only from
-the host.
+The container runs with a read-only root filesystem, a bounded `noexec` `/tmp`,
+dropped capabilities (keeping only `SETUID`, `SETGID`, and `KILL`),
+`no-new-privileges`, `/` mounted read-only at `/host`, and `config/prompts`
+mounted read-only. Both the Docker socket and `config.toml` are mounted inside
+a root-only directory (`/run/ember`, mode `0700`) so the daemon and read-only
+`docker_*` tools can use them, while shell commands run as UID `10001` with a
+clean environment.
+
+Shell commands can still read anything world-readable on the host through
+`/host`. Make `config.toml` root-owned and private on the host
+(`sudo chown root:root config.toml && sudo chmod 600 config.toml`; the
+container can't bypass file permissions), and keep the host Docker
+socket at its default permissions (`0660 root:docker`): if it is
+world-writable, shell commands can reach it at `/host/var/run/docker.sock`.

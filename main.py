@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import tomllib
 from pathlib import Path
 
@@ -17,14 +18,21 @@ logger = logging.getLogger(__name__)
 
 
 def load_config() -> dict:
-    p = Path(CONFIG_PATH)
+    config_path = os.environ.get("EMBER_CONFIG", CONFIG_PATH)
+    p = Path(config_path)
     if not p.exists():
         raise SystemExit(
-            f"config file not found: {CONFIG_PATH}\n"
-            f"copy {EXAMPLE_PATH} to {CONFIG_PATH} and fill in your values."
+            f"config file not found: {config_path}\n"
+            f"copy {EXAMPLE_PATH} to {config_path} and fill in your values."
         )
-    with open(p, "rb") as f:
-        return tomllib.load(f)
+    try:
+        with open(p, "rb") as f:
+            return tomllib.load(f)
+    except PermissionError:
+        raise SystemExit(
+            f"can't read {config_path}: if running in docker, it must be owned by root "
+            f"(sudo chown root:root config.toml && sudo chmod 600 config.toml)."
+        )
 
 
 async def daemon_loop(cfg, sinks):

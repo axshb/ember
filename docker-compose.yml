@@ -3,20 +3,38 @@ services:
     build: .
     restart: unless-stopped
     pid: host
+    pids_limit: 128
+    mem_limit: 256m
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - KILL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - DOCKER_HOST=unix:///run/ember/docker.sock
+      - EMBER_CONFIG=/run/ember/config.toml
 
     volumes:
-      # Docker socket — lets the daemon collect container metrics
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker socket inside root-only /run/ember (mode 0700) — daemon and
+      # read-only docker_* tools can reach it, shell commands (UID 10001) cannot
+      - /var/run/docker.sock:/run/ember/docker.sock:ro
 
-      # Host filesystem read-only at /host — agent file browsing tools
+      # Host filesystem read-only at /host — agent shell investigation
       - /:/host:ro
 
-      # Config (gitignored, contains secrets) — mount from host
-      - ./config.toml:/app/config.toml:ro
+      # Config (gitignored, contains secrets) inside root-only /run/ember (mode 0700)
+      # so shell commands (UID 10001) cannot read API keys or webhook URLs
+      - ./config.toml:/run/ember/config.toml:ro
 
       # Custom prompts (gitignored, user-specific) — read-only,
       # override same-named files in config/defaults/prompts/
       - ./config/prompts:/app/config/prompts:ro
 
-    # Config comes from TOML only, no env fallbacks.
+    # App config comes from TOML only (no config env fallbacks).
     # If config.toml doesn't exist, the app will print a helpful error.

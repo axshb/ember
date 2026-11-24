@@ -36,21 +36,9 @@ model = "z-ai/glm-5.3-flash"
 max_tool_calls = 15
 
 [agent.shell]
-# Commands the agent may run while triaging alerts (investigation is read-only)
-allowed_commands = [
-  "ls", "cat", "grep", "find", "rg", "head", "tail", "wc",
-  "ps", "df", "du", "free", "uptime", "stat", "awk",
-  "docker", "systemctl", "journalctl", "dmesg",
-  "ss", "ping", "curl", "uname", "hostname", "id",
-]
-denied_commands = []
-denied_operators = []
+# Shell commands run unprivileged on the read-only /host mount
 default_timeout = 30.0
 max_output_chars = 50000
-
-[agent.filesystem]
-root_dir = "/host"
-denied_patterns = [".env", ".env.*", "*.pem", "*.key", "**/secrets*", ".git/*"]
 
 # ── Sinks ────────────────────────────────────
 # Every sink is one-way: ember sends reports, it never listens for replies.

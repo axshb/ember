@@ -3,6 +3,7 @@ __pycache__
 **/__pycache__
 .git
 .old
+config.toml
 config/config.toml
 config/prompts
 *.egg-info
