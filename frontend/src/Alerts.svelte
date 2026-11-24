@@ -3,7 +3,7 @@
   import type { AlertRule, Config, Metric } from './types'
 
   const ops: [string, string][] = [['>', 'above'], ['<', 'below'], ['>=', 'at or above'], ['<=', 'at or below']]
-  const reminders: [number, string][] = [[0, 'no reminders'], [60, 'remind hourly'], [360, 'remind every 6 h'], [1440, 'remind daily']]
+  const reminders: [number, string][] = [[0, 'none'], [60, 'hourly'], [360, 'every 6 h'], [1440, 'daily']]
   const compare: Record<string, (a: number, b: number) => boolean> = {
     '>': (a, b) => a > b, '<': (a, b) => a < b, '>=': (a, b) => a >= b, '<=': (a, b) => a <= b,
   }
@@ -53,9 +53,9 @@
 <div class="page-head">
   <div>
     <h2>Alerts</h2>
-    <p class="text-light">Checked every poll. When one fires, the agent investigates and sends a report. You get a short message when it clears.</p>
+    <p class="text-light small">Checked every poll. A firing rule gets one report from the agent, then a short message when it clears. Container crashes, restart loops and failing healthchecks are always watched.</p>
   </div>
-  {#if config}<button class="outline" onclick={add} disabled={!metrics.length}>+ Add alert</button>{/if}
+  {#if config}<button class="outline small" onclick={add} disabled={!metrics.length}>+ Add</button>{/if}
 </div>
 
 {#if config}
@@ -63,53 +63,46 @@
     <div role="alert" data-variant="warning" class="mb-4">No metrics yet, ember hasn't finished its first poll. Reload in a few seconds.</div>
   {/if}
 
-  <div class="vstack gap-4">
+  <div class="rules card">
+    {#if config.alerts.length}
+      <div class="row head text-light">
+        <span>Metric</span><span>Condition</span><span>Threshold</span><span>Reminders</span><span>Now</span><span></span><span></span>
+      </div>
+    {/if}
     {#each config.alerts as rule, i}
       {@const m = find(rule.path)}
       {@const firing = m && compare[rule.op]?.(m.value, rule.value)}
-      <article class="card rule">
-        <div class="sentence">
-          <select bind:value={rule.path} aria-label="Metric" class="metric">
-            {#if !m}<option value={rule.path}>{rule.path || 'Choose a metric'}</option>{/if}
-            {#each groups as [group, items]}
-              <optgroup label={cap(group)}>
-                {#each items! as item}<option value={item.path}>{cap(item.group)} › {item.name} ({item.unit})</option>{/each}
-              </optgroup>
-            {/each}
-          </select>
-          <span class="hstack gap-3">
-            <span class="text-light">is</span>
-            <select bind:value={rule.op} aria-label="Condition" class="op">
-              {#each ops as [op, label]}<option value={op}>{label}</option>{/each}
-            </select>
-          </span>
-          <fieldset class="group threshold">
-            <input id="threshold-{i}" type="number" step="any" bind:value={rule.value} aria-label="Threshold" />
-            {#if m}<label for="threshold-{i}">{m.unit}</label>{/if}
-          </fieldset>
-          <select bind:value={rule.remind} aria-label="Reminders while firing" class="remind">
-            {#if !reminders.some(([v]) => v === rule.remind)}<option value={rule.remind}>remind every {rule.remind} min</option>{/if}
-            {#each reminders as [v, label]}<option value={v}>{label}</option>{/each}
-          </select>
-          <button class="ghost small remove" data-variant="danger" title="Remove alert" aria-label="Remove alert" onclick={() => config!.alerts.splice(i, 1)}>✕</button>
-        </div>
-
+      <div class="row">
+        <select bind:value={rule.path} aria-label="Metric" class="metric">
+          {#if !m}<option value={rule.path}>{rule.path || 'Choose a metric'}</option>{/if}
+          {#each groups as [group, items]}
+            <optgroup label={cap(group)}>
+              {#each items! as item}<option value={item.path}>{cap(item.group)} › {item.name} ({item.unit})</option>{/each}
+            </optgroup>
+          {/each}
+        </select>
+        <select bind:value={rule.op} aria-label="Condition">
+          {#each ops as [op, label]}<option value={op}>{label}</option>{/each}
+        </select>
+        <fieldset class="group">
+          <input id="threshold-{i}" type="number" step="any" bind:value={rule.value} aria-label="Threshold" />
+          {#if m}<label for="threshold-{i}">{m.unit}</label>{/if}
+        </fieldset>
+        <select bind:value={rule.remind} aria-label="Reminders while firing">
+          {#if !reminders.some(([v]) => v === rule.remind)}<option value={rule.remind}>every {rule.remind} min</option>{/if}
+          {#each reminders as [v, label]}<option value={v}>{label}</option>{/each}
+        </select>
         {#if m}
-          {@const bar = meter(rule, m)}
-          <div class="hstack gap-4 mt-4">
-            <meter value={m.value} min="0" {...bar}></meter>
-            <span class="now">now <strong>{fmt(m.value, m.unit)}</strong></span>
-            <span class="badge" data-variant={firing ? 'danger' : 'success'}>{firing ? 'firing' : 'ok'}</span>
-          </div>
+          <span class="now"><meter value={m.value} min="0" {...meter(rule, m)}></meter>{fmt(m.value, m.unit)}</span>
+          <span class="badge" data-variant={firing ? 'danger' : 'success'}>{firing ? 'firing' : 'ok'}</span>
         {:else}
-          <p class="text-light small mt-4" style="margin-bottom: 0">Not reporting right now (stopped container or removed disk?). The rule is kept.</p>
+          <span class="now text-light" title="Stopped container or removed disk? The rule is kept.">not reporting</span>
+          <span></span>
         {/if}
-      </article>
+        <button class="ghost small" data-variant="danger" title="Remove alert" aria-label="Remove alert" onclick={() => config!.alerts.splice(i, 1)}>✕</button>
+      </div>
     {:else}
-      <article class="card empty">
-        <p><strong>No alerts yet.</strong></p>
-        <p class="text-light">Add one to get a report when a metric crosses a threshold, like disk above 90%.</p>
-      </article>
+      <p class="empty text-light">No alerts yet. Add one to get a report when a metric crosses a threshold, like disk above 90%.</p>
     {/each}
   </div>
 
@@ -118,7 +111,7 @@
       {#if error}<span role="alert" data-variant="error">{error}</span>
       {:else if justSaved}<span>Saved.</span>
       {:else}<span class="text-light">Unsaved changes</span>{/if}
-      <button onclick={save} disabled={!dirty}>Save</button>
+      <button class="small" onclick={save} disabled={!dirty}>Save</button>
     </div>
   {/if}
 {:else if error}
@@ -128,16 +121,27 @@
 {/if}
 
 <style>
-  .sentence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-  .sentence > * { margin: 0; }
-  .metric { flex: 1 1 100%; }
-  .op, .remind { width: auto; }
-  .threshold { width: 8rem; }
-  .remove { margin-left: auto; }
-  @media (min-width: 769px) { .metric { flex-basis: 14rem; } }
-  meter { flex: 1; }
-  .now { white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .empty { text-align: center; padding-block: var(--space-10); }
-  .empty p { margin: 0; }
-  .savebar { position: sticky; bottom: var(--space-4); margin-top: var(--space-6); padding: var(--space-3) var(--space-4); box-shadow: var(--shadow-large); }
+  .rules { padding: 0; }
+  .row {
+    display: grid; align-items: center; gap: var(--space-2);
+    grid-template-columns: minmax(10rem, 2fr) 7rem 6.5rem 7.5rem minmax(7rem, 1fr) 3.5rem 2rem;
+    padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row > * { margin: 0; min-width: 0; }
+  .head { font-size: var(--text-8); padding-block: var(--space-2) 0; border-bottom: 0; }
+  .row select, .row input { height: 2rem; padding-block: 0; font-size: var(--text-7); }
+  .row fieldset label { font-size: var(--text-8); }
+  .now { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-7); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .now meter { width: 3.5rem; flex: none; }
+  .badge { justify-self: start; }
+  .empty { margin: 0; padding: var(--space-6); text-align: center; }
+  .savebar { position: sticky; bottom: var(--space-4); margin-top: var(--space-4); padding: var(--space-2) var(--space-3); box-shadow: var(--shadow-large); }
+  /* phone: metric on its own line, the rest wraps under it */
+  @media (max-width: 900px) {
+    .head { display: none; }
+    .row { grid-template-columns: 1fr 1fr 1fr; }
+    .row > button { justify-self: end; }
+    .metric { grid-column: 1 / -1; }
+  }
 </style>

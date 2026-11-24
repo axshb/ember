@@ -1,12 +1,14 @@
 <script lang="ts">
   import { api, message } from './api'
   import type { Config } from './types'
+  import Prompts from './Prompts.svelte'
 
   let config = $state<Config | null>(null)
   let isSet = $state({ api_key: false, webhook_url: false, password: false }) // as of last load
   let error = $state('')
   let saved = $state(false)
   let importMsg = $state('')
+  let imports = $state(0) // an import replaces the prompts too, this remounts them
 
   async function load() {
     try {
@@ -45,6 +47,7 @@
     try {
       await api('POST', '/import', await file.text())
       await load()
+      imports++
       importMsg = `Imported ${file.name}.`
     } catch (err) {
       importMsg = `Import failed: ${message(err)}`
@@ -55,10 +58,11 @@
   const selectAll = (e: FocusEvent) => (e.currentTarget as HTMLInputElement).select()
 </script>
 
+<div class="settings">
 <div class="page-head">
   <div>
     <h2>Settings</h2>
-    <p class="text-light">Changes apply on the next poll, no restart needed.</p>
+    <p class="text-light small">Changes apply on the next poll, no restart needed.</p>
   </div>
 </div>
 
@@ -67,7 +71,7 @@
 {/snippet}
 
 {#if config}
-  <form onsubmit={save} class="vstack gap-4">
+  <form onsubmit={save} class="vstack gap-3">
     <section class="card">
       <h3>Agent</h3>
       <p class="text-light small">The LLM that investigates alerts, via OpenRouter. Without a key, reports contain the raw alert data only.</p>
@@ -132,18 +136,20 @@
     </section>
 
     <div class="hstack gap-3">
-      <button>Save settings</button>
+      <button class="small">Save settings</button>
       {#if saved}<span class="text-light">Saved.</span>{/if}
       {#if error}<span role="alert" data-variant="error">{error}</span>{/if}
     </div>
   </form>
 
-  <section class="card mt-8">
+  {#key imports}<Prompts />{/key}
+
+  <section class="card">
     <h3>Backup</h3>
     <p class="text-light small">Alerts, settings and prompts as a file. Secrets (API key, webhook URL, email password) are never included.</p>
     <div class="hstack gap-3">
-      <a class="button outline" href="/api/export" download>Export</a>
-      <label class="button outline">Import… <input type="file" accept=".json,application/json" onchange={importFile} hidden /></label>
+      <a class="button outline small" href="/api/export" download>Export</a>
+      <label class="button outline small">Import… <input type="file" accept=".json,application/json" onchange={importFile} hidden /></label>
       {#if importMsg}<span class="small">{importMsg}</span>{/if}
     </div>
   </section>
@@ -152,9 +158,13 @@
 {:else}
   <div class="skeleton" style="height: 16rem"></div>
 {/if}
+</div>
 
 <style>
-  h3 { margin: 0; }
-  section > p.small { margin: var(--space-1) 0 var(--space-4); }
-  header + p.small { margin-bottom: 0; }
+  /* global so the Prompts section inside this page matches */
+  .settings :global(section.card) { padding: var(--space-4); }
+  .settings > :global(section.card) { margin-top: var(--space-3); }
+  .settings :global(section.card h3) { margin: 0; font-size: var(--text-5); }
+  .settings :global(section.card > p.small) { margin: var(--space-1) 0 var(--space-3); }
+  .settings section.card > header + p.small { margin-bottom: 0; }
 </style>

@@ -26,20 +26,20 @@
 <div class="page-head">
   <div>
     <h2>History</h2>
-    <p class="text-light">The last 50 reports, newest first.</p>
+    <p class="text-light small">The last 50 reports, newest first.</p>
   </div>
 </div>
 
 {#if reports}
-  <div class="vstack gap-3">
+  <div class="card list">
     {#each reports as r (r.id)}
-      <details class="card">
-        <summary class="hstack gap-3">
+      <details>
+        <summary>
           <span class="badge" data-variant={variants[r.report.severity] ?? 'secondary'}>{r.report.severity}</span>
           <strong class="title">{r.report.title}</strong>
-          <time class="text-light small" title={new Date(r.time * 1000).toLocaleString()}>{ago(r.time)}</time>
+          <time class="text-light" title={new Date(r.time * 1000).toLocaleString()}>{ago(r.time)}</time>
         </summary>
-        <div class="mt-4">
+        <div class="body">
           <p>{r.report.summary}</p>
           {#if r.report.findings.length}
             <h4>Findings</h4>
@@ -49,7 +49,7 @@
             <h4>Suggested actions</h4>
             <ul>{#each r.report.actions as a}<li>{a}</li>{/each}</ul>
           {/if}
-          <footer class="text-light small">
+          <footer class="text-light">
             {#each r.alerts as a}
               {#if a.source === 'docker'}
                 <div>{a.state === 'resolved' ? 'Cleared' : 'Triggered'}: container <strong>{a.name}</strong> {a.problem}{a.problem === 'crashed' ? ` (exit ${a.exit_code})` : ''}</div>
@@ -61,10 +61,7 @@
         </div>
       </details>
     {:else}
-      <article class="card empty">
-        <p><strong>Nothing has fired yet.</strong></p>
-        <p class="text-light">Reports show up here when an alert fires, even with no sinks enabled.</p>
-      </article>
+      <p class="empty text-light">Nothing has fired yet. Reports show up here even with no sinks enabled.</p>
     {/each}
   </div>
 {:else if error}
@@ -74,12 +71,17 @@
 {/if}
 
 <style>
-  summary { cursor: pointer; list-style: none; }
-  summary::-webkit-details-marker { display: none; }
+  .list { padding: 0; }
+  /* oat boxes every details, here they're plain rows inside one card */
+  details { border: 0; border-radius: 0; border-bottom: 1px solid var(--border); margin: 0; }
+  details:last-child { border-bottom: 0; }
+  summary { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); font-size: var(--text-7); }
   .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  time { white-space: nowrap; }
-  h4 { margin: var(--space-4) 0 var(--space-1); font-size: var(--text-6); }
-  footer { border-top: 1px solid var(--border); margin-top: var(--space-4); padding-top: var(--space-3); }
-  .empty { text-align: center; padding-block: var(--space-10); }
-  .empty p { margin: 0; }
+  time { white-space: nowrap; font-size: var(--text-8); }
+  .body { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); font-size: var(--text-7); }
+  .body p { margin: 0 0 var(--space-2); }
+  h4 { margin: var(--space-3) 0 var(--space-1); font-size: var(--text-7); }
+  ul { margin: 0; }
+  footer { border-top: 1px solid var(--border); margin-top: var(--space-3); padding-top: var(--space-2); font-size: var(--text-8); }
+  .empty { margin: 0; padding: var(--space-6); text-align: center; }
 </style>

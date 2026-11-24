@@ -41,38 +41,36 @@
   }
 </script>
 
-<div class="page-head">
-  <div>
-    <h2>Prompts</h2>
-    <p class="text-light">Instructions the agent follows when writing a report. Edits apply to the next alert.</p>
-  </div>
-</div>
-
+<section class="card">
+  <h3>Prompts</h3>
+  <p class="text-light small">Instructions the agent follows when writing a report. Edits apply to the next alert.</p>
 {#if prompts}
-  <div class="vstack gap-4">
-    {#each prompts as p}
-      <article class="card">
-        <header class="hstack justify-between mb-4">
-          <code>{p.name}</code>
-          {#if p.override === null}
-            <span class="badge" data-variant="secondary">default</span>
-          {:else}
-            <span class="badge" data-variant="warning">customized</span>
-          {/if}
-        </header>
-        <textarea rows="22" bind:value={p.text} aria-label={p.name}></textarea>
-        <footer class="hstack gap-3 mt-4">
-          <button onclick={() => save(p)} disabled={p.text === (p.override ?? p.default)}>Save</button>
-          <button class="ghost" disabled={p.override === null} onclick={() => reset(p)}>Reset to default</button>
-          {#if p.failed}<span role="alert" data-variant="error">{p.msg}</span>{:else if p.msg}<span class="text-light small">{p.msg}</span>{/if}
-        </footer>
-      </article>
-    {:else}
-      <p class="text-light">No prompts.</p>
-    {/each}
-  </div>
+  {#each prompts as p}
+    <details>
+      <summary class="hstack gap-2">
+        <code>{p.name}</code>
+        <span class="badge" data-variant={p.override === null ? 'secondary' : 'warning'}>{p.override === null ? 'default' : 'customized'}</span>
+      </summary>
+      <textarea rows="18" bind:value={p.text} aria-label={p.name}></textarea>
+      <div class="hstack gap-3 mt-2">
+        <button class="small" onclick={() => save(p)} disabled={p.text === (p.override ?? p.default)}>Save</button>
+        <button class="ghost small" disabled={p.override === null} onclick={() => reset(p)}>Reset to default</button>
+        {#if p.failed}<span role="alert" data-variant="error">{p.msg}</span>{:else if p.msg}<span class="text-light small">{p.msg}</span>{/if}
+      </div>
+    </details>
+  {:else}
+    <p class="text-light small">No prompts.</p>
+  {/each}
 {:else if error}
   <div role="alert" data-variant="error">{error}</div>
 {:else}
-  <div class="skeleton" style="height: 24rem"></div>
+  <div class="skeleton" style="height: 4rem"></div>
 {/if}
+</section>
+
+<style>
+  details { margin-top: var(--space-2); }
+  summary { justify-content: flex-start; }
+  summary::after { margin-left: auto; }
+  textarea { margin-top: var(--space-2); }
+</style>
