@@ -15,8 +15,7 @@ sinks. Nothing listens for replies — every sink is one-way.
 
 ## Configuration
 
-Copy `config.example.toml` to `config.toml` in the repo root, `chmod 600` it,
-and fill it in.
+Copy `config.example.toml` to `config.toml` in the repo root and fill it in.
 Secrets live only in `config.toml`, which is gitignored.
 
 ### Prompts
@@ -48,13 +47,15 @@ and `config.toml` / `prompts/` read-only from the host.
 
 ### Agent sandbox
 
-The agent's shell commands run as uid 2100000000: it can't open the Docker
-socket, can't write to `/host`, and can't read root-only files. Ember refuses to
-start if `config.toml` is world-readable, so your keys stay out of reach. No
-other process on the host may run as that uid, since the agent can control them.
+The agent's shell commands run as uid 2100000000. It can't write anything on
+the host, can't use the Docker socket, and can't read root-only files or files
+in folders other users can't enter. No other process on the host may run as that
+uid, since the agent can control them.
 
-It can still read world-readable files, every process's command line, and
-connect to world-writable host sockets, and it can reach the network. Anything
-it reads can end up with your LLM provider, so keep secrets out of
-world-readable places. Running locally (not as root), the shell is disabled.
-Rootless Docker and userns-remap aren't supported, the uid may not map there.
+It can read anything an unprivileged user on the host could, such as most `.env`
+files and ember's own `config.toml`, and what it reads is sent to your LLM
+provider. To keep a stack's secrets away from it, `chmod 750` that stack's
+folder, or leave out the API key and ember sends the raw alerts without triage.
+
+Running locally (not as root), the shell is disabled. Rootless Docker and
+userns-remap aren't supported, the uid may not map there.

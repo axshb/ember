@@ -23,8 +23,6 @@ def load_config() -> dict:
             f"config file not found: {CONFIG_PATH}\n"
             f"copy {EXAMPLE_PATH} to {CONFIG_PATH} and fill in your values."
         )
-    if p.stat().st_mode & 0o004:
-        raise SystemExit(f"{CONFIG_PATH} is world-readable, run: chmod 600 {CONFIG_PATH}")
     with open(p, "rb") as f:
         return tomllib.load(f)
 
