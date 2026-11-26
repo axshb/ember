@@ -55,5 +55,4 @@ def _collect_all() -> list[ContainerMetrics]:
     client.close()
 
 async def collect_docker_metrics() -> DockerMetrics:
-  # the docker client blocks, keep it off the event loop
   return DockerMetrics(containers=await asyncio.to_thread(_collect_all))

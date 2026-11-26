@@ -3,12 +3,17 @@ services:
     build: .
     restart: unless-stopped
     pid: host
+    # caps what a runaway agent command can spawn
+    pids_limit: 256
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
 
     volumes:
       # Docker socket — lets the daemon collect container metrics
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-      # Host filesystem read-only at /host — agent file browsing tools
+      # Host filesystem read-only at /host — the agent shell's working directory
       - /:/host:ro
 
       # Config (gitignored, contains secrets) — mount from host

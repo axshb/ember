@@ -2,7 +2,7 @@
 
 A read-only alert reporter for a single server. Ember polls host and Docker
 metrics, evaluates threshold alerts, has an LLM agent triage what fired (using
-read-only shell/filesystem tools), and sends a structured report to your
+a sandboxed shell and read-only docker tools), and sends a structured report to your
 sinks. Nothing listens for replies — every sink is one-way.
 
 ## Sinks
@@ -15,7 +15,8 @@ sinks. Nothing listens for replies — every sink is one-way.
 
 ## Configuration
 
-Copy `config.example.toml` to `config.toml` in the repo root and fill it in.
+Copy `config.example.toml` to `config.toml` in the repo root, `chmod 600` it,
+and fill it in.
 Secrets live only in `config.toml`, which is gitignored.
 
 ### Prompts
@@ -42,6 +43,18 @@ or locally:
 
     uv run python main.py
 
-The container mounts the Docker socket (metrics), `/` at `/host` read-only
-(agent filesystem tools), and `config.toml` / `prompts/` read-only from the
-host.
+The container mounts the Docker socket (metrics), `/` at `/host` read-only,
+and `config.toml` / `prompts/` read-only from the host.
+
+### Agent sandbox
+
+The agent's shell commands run as uid 2100000000: it can't open the Docker
+socket, can't write to `/host`, and can't read root-only files. Ember refuses to
+start if `config.toml` is world-readable, so your keys stay out of reach. No
+other process on the host may run as that uid, since the agent can control them.
+
+It can still read world-readable files, every process's command line, and
+connect to world-writable host sockets, and it can reach the network. Anything
+it reads can end up with your LLM provider, so keep secrets out of
+world-readable places. Running locally (not as root), the shell is disabled.
+Rootless Docker and userns-remap aren't supported, the uid may not map there.
