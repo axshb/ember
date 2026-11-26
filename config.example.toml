@@ -18,7 +18,8 @@ interval = 10
 path = "system.cpu.percent"
 op = ">"
 value = 80
-# Cooldown in minutes before this alert can fire again
+# An alert fires once, then sends a short notice when it resolves.
+# Cooldown: minutes after it fires or resolves before it can fire again
 cooldown = 5
 
 [[alerts]]

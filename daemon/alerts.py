@@ -20,22 +20,26 @@ def _get_measured_value(data, path: str):
       data = data[part]
   return data
 
-def check_alerts(metrics, alerts, last_fired: dict) -> list[dict]:
+def check_alerts(metrics, alerts, firing: set, last_fired: dict) -> tuple[list[dict], list[dict]]:
   now = time()
-  active = []
+  fired, resolved = [], []
   for alert in alerts:
-      try:
-          actual = _get_measured_value(metrics, alert["path"])
-      except (KeyError, IndexError, StopIteration):
-          continue
-      if not OPS[alert["op"]](actual, alert["value"]): # comparing values, see OPS
-          continue
+    key = f"{alert['path']} {alert['op']} {alert['value']}"
+    try:
+      actual = _get_measured_value(metrics, alert["path"])
+    except (KeyError, IndexError, StopIteration):
+      continue
+    breached = OPS[alert["op"]](actual, alert["value"]) # comparing values, see OPS
 
+    if breached and key not in firing:
       cooldown = alert.get("cooldown", 0) * 60  # minutes in config, need seconds
-      key = alert["path"]
-      if key in last_fired and (now - last_fired[key]) < cooldown:
-          continue
-
+      if key in last_fired and now - last_fired[key] < cooldown:
+        continue
+      firing.add(key)
       last_fired[key] = now
-      active.append({**alert, "measured": actual})
-  return active
+      fired.append({**alert, "measured": actual})
+    elif not breached and key in firing:
+      firing.remove(key)
+      resolved.append({**alert, "measured": actual, "since": last_fired[key]})
+      last_fired[key] = now  # cooldown also counts from the resolve, so a short dip doesn't re-fire
+  return fired, resolved

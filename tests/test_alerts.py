@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 
+from agent.report import resolved_report
 from daemon.alerts import check_alerts
 
 
@@ -11,15 +12,50 @@ class AlertTests(unittest.TestCase):
             "containers": [{"name": "web", "memory_usage": 512}],
         }
         self.alert = {"path": "system.cpu.percent", "op": ">", "value": 80}
+        self.key = "system.cpu.percent > 80"
+
+    def check(self, alerts, firing, last_fired, now=1000, cpu=90):
+        self.metrics["system"]["cpu"]["percent"] = cpu
+        with patch("daemon.alerts.time", return_value=now):
+            return check_alerts(self.metrics, alerts, firing, last_fired)
 
     def test_fired_alert_includes_measurement_without_changing_config(self):
-        last_fired = {}
-        with patch("daemon.alerts.time", return_value=1000):
-            active = check_alerts(self.metrics, [self.alert], last_fired)
-
-        self.assertEqual(active, [{**self.alert, "measured": 90}])
-        self.assertEqual(last_fired, {"system.cpu.percent": 1000})
+        firing, last_fired = set(), {}
+        fired, resolved = self.check([self.alert], firing, last_fired)
+        self.assertEqual(fired, [{**self.alert, "measured": 90}])
+        self.assertEqual(resolved, [])
+        self.assertEqual((firing, last_fired), ({self.key}, {self.key: 1000}))
         self.assertNotIn("measured", self.alert)
+
+    def test_fires_once_while_breached_then_resolves(self):
+        firing, last_fired = set(), {}
+        self.assertEqual(len(self.check([self.alert], firing, last_fired, now=1000)[0]), 1)
+        self.assertEqual(self.check([self.alert], firing, last_fired, now=1010), ([], []))
+        fired, resolved = self.check([self.alert], firing, last_fired, now=1020, cpu=50)
+        self.assertEqual(fired, [])
+        self.assertEqual(resolved, [{**self.alert, "measured": 50, "since": 1000}])
+        self.assertEqual(firing, set())
+
+    def test_cooldown_stops_refiring_after_a_resolve(self):
+        alert = {**self.alert, "cooldown": 2}
+        firing, last_fired = set(), {}
+        self.check([alert], firing, last_fired, now=1000)
+        self.check([alert], firing, last_fired, now=1010, cpu=50)
+        self.assertEqual(self.check([alert], firing, last_fired, now=1129), ([], []))
+        self.assertEqual(len(self.check([alert], firing, last_fired, now=1130)[0]), 1)
+
+    def test_cooldown_counts_from_the_resolve(self):
+        alert = {**self.alert, "cooldown": 2}
+        firing, last_fired = set(), {}
+        self.check([alert], firing, last_fired, now=1000)
+        self.check([alert], firing, last_fired, now=2000, cpu=50)  # long alert, then a dip
+        self.assertEqual(self.check([alert], firing, last_fired, now=2010), ([], []))
+        self.assertEqual(len(self.check([alert], firing, last_fired, now=2120)[0]), 1)
+
+    def test_rules_on_the_same_path_are_separate(self):
+        warn, crit = self.alert, {**self.alert, "value": 85}
+        fired, _ = self.check([warn, crit], set(), {})
+        self.assertEqual(len(fired), 2)
 
     def test_comparison_operators(self):
         for op, threshold, fires in [
@@ -34,42 +70,28 @@ class AlertTests(unittest.TestCase):
         ]:
             with self.subTest(op=op, threshold=threshold):
                 alert = {**self.alert, "op": op, "value": threshold}
-                last_fired = {}
-                active = check_alerts(self.metrics, [alert], last_fired)
-                self.assertEqual(bool(active), fires)
-                self.assertEqual(bool(last_fired), fires)
+                fired, _ = self.check([alert], set(), {})
+                self.assertEqual(bool(fired), fires)
 
     def test_containers_can_be_selected_by_name_or_index(self):
         for path in ("containers.web.memory_usage", "containers.0.memory_usage"):
             with self.subTest(path=path):
                 alert = {"path": path, "op": ">", "value": 500}
-                self.assertEqual(
-                    check_alerts(self.metrics, [alert], {}),
-                    [{**alert, "measured": 512}],
-                )
+                fired, _ = self.check([alert], set(), {})
+                self.assertEqual(fired, [{**alert, "measured": 512}])
 
-    def test_missing_metrics_are_skipped(self):
+    def test_missing_metrics_keep_their_state(self):
+        firing = {"containers.gone.memory_usage > 80"}
         alerts = [
             {**self.alert, "path": path}
             for path in ("system.missing", "containers.9.memory_usage", "containers.gone.memory_usage")
         ]
-        last_fired = {}
-        self.assertEqual(check_alerts(self.metrics, alerts, last_fired), [])
-        self.assertEqual(last_fired, {})
+        self.assertEqual(self.check(alerts, firing, {}), ([], []))
+        self.assertEqual(firing, {"containers.gone.memory_usage > 80"})
 
-    def test_cooldown_is_in_minutes_and_expires_at_boundary(self):
-        alert = {**self.alert, "cooldown": 2}
-        last_fired = {alert["path"]: 1000}
-        with patch("daemon.alerts.time", return_value=1119):
-            self.assertEqual(check_alerts(self.metrics, [alert], last_fired), [])
-        self.assertEqual(last_fired[alert["path"]], 1000)
-
-        with patch("daemon.alerts.time", return_value=1120):
-            self.assertEqual(len(check_alerts(self.metrics, [alert], last_fired)), 1)
-        self.assertEqual(last_fired[alert["path"]], 1120)
-
-    def test_no_cooldown_allows_repeated_alerts(self):
-        last_fired = {}
-        with patch("daemon.alerts.time", return_value=1000):
-            for _ in range(2):
-                self.assertEqual(len(check_alerts(self.metrics, [self.alert], last_fired)), 1)
+    def test_resolved_report(self):
+        report = resolved_report({**self.alert, "measured": 41.234}, minutes=12)
+        self.assertEqual(report.severity, "info")
+        self.assertEqual(report.summary, "system.cpu.percent is back to 41.2 (rule: > 80) after 12 min.")
+        status = resolved_report({"path": "containers.web.status", "op": "==", "value": "exited", "measured": "running"}, 3)
+        self.assertIn("back to running", status.summary)

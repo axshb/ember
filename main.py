@@ -1,10 +1,11 @@
 import asyncio
 import logging
+import time
 import tomllib
 from pathlib import Path
 
 from agent.agent import run_alert
-from agent.report import render_markdown
+from agent.report import render_markdown, resolved_report
 from daemon.alerts import check_alerts
 from daemon.containers import collect_docker_metrics
 from daemon.system import collect_system_metrics
@@ -27,23 +28,29 @@ def load_config() -> dict:
         return tomllib.load(f)
 
 
+async def send(sinks, report):
+    text = render_markdown(report)
+    for sink in sinks:
+        try:
+            await sink.send(report, text)
+        except Exception as e:
+            logger.error("sink %s failed: %s", type(sink).__name__, e)
+
+
 async def daemon_loop(cfg, sinks):
-    last_fired = {}
+    firing, last_fired = set(), {}
     while True:
         docker = await collect_docker_metrics()
         system = await collect_system_metrics()
         metrics = {"system": system.model_dump(), "containers": docker.model_dump()["containers"]}
 
-        active_alerts = check_alerts(metrics, cfg["alerts"], last_fired)
-        if active_alerts:
-            alerts = [{k: v for k, v in a.items() if k != "cooldown"} for a in active_alerts]
-            report = await run_alert(alerts, cfg)
-            text = render_markdown(report)
-            for sink in sinks:
-                try:
-                    await sink.send(report, text)
-                except Exception as e:
-                    logger.error("sink %s failed: %s", type(sink).__name__, e)
+        fired, resolved = check_alerts(metrics, cfg["alerts"], firing, last_fired)
+        if fired:
+            alerts = [{k: v for k, v in a.items() if k != "cooldown"} for a in fired]
+            await send(sinks, await run_alert(alerts, cfg))
+        for alert in resolved:  # short notice, no triage
+            minutes = round((time.time() - alert["since"]) / 60)
+            await send(sinks, resolved_report(alert, minutes))
 
         await asyncio.sleep(cfg["polling"]["interval"])
 

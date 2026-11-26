@@ -27,6 +27,17 @@ def render_markdown(report: AlertReport) -> str:
     return "\n".join(lines)
 
 
+def resolved_report(alert: dict, minutes: int) -> AlertReport:
+    measured = alert["measured"]
+    if isinstance(measured, float):
+        measured = round(measured, 1)
+    return AlertReport(
+        title=f"Resolved: {alert['path']}"[:120],
+        severity="info",
+        summary=f"{alert['path']} is back to {measured} (rule: {alert['op']} {alert['value']}) after {minutes} min.",
+    )
+
+
 def fallback_report(alerts: list[dict]) -> AlertReport:
     """Report built from raw alert data when the triage agent fails."""
     paths = ", ".join(a["path"] for a in alerts)
