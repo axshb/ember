@@ -36,8 +36,11 @@ cooldown = 5
 
 # ── Agent ────────────────────────────────────
 [agent]
-# OpenRouter API key
+# OpenRouter API key. Leave empty to send raw alerts without triage
 api_key = "YOUR_OPENROUTER_API_KEY"
+# Any OpenAI-compatible API, e.g. a local model: "http://localhost:11434/v1"
+# (local models still need some api_key, any value works)
+# base_url = "https://openrouter.ai/api/v1"
 # Model to use (see https://openrouter.ai/models)
 model = "z-ai/glm-5.3-flash"
 # Hard cap on tool calls (and requests) per alert report

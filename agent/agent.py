@@ -34,7 +34,7 @@ def _build_model(cfg: dict) -> OpenAIChatModel:
     return OpenAIChatModel(
         agent_cfg.get("model", "moonshotai/kimi-k2.6"),
         provider=OpenAIProvider(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=agent_cfg.get("base_url", "https://openrouter.ai/api/v1"),
             api_key=agent_cfg.get("api_key", ""),
         ),
     )
@@ -51,6 +51,8 @@ def create_agent(cfg: dict) -> Agent[None, AlertReport]:
 
 
 async def run_alert(alerts: list[dict], cfg: dict) -> AlertReport:
+    if not cfg.get("agent", {}).get("api_key"):
+        return fallback_report(alerts)
     max_tool_calls = cfg.get("agent", {}).get("max_tool_calls", DEFAULT_MAX_TOOL_CALLS)
     try:
         agent = create_agent(cfg)

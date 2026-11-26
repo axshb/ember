@@ -2,8 +2,8 @@
 
 A read-only alert reporter for a single server. Ember polls host and Docker
 metrics, evaluates threshold alerts, has an LLM agent triage what fired (using
-a sandboxed shell and read-only docker tools), and sends a structured report to your
-sinks. Nothing listens for replies — every sink is one-way.
+read-only tools), and sends a structured report to your sinks. Nothing listens
+for replies — every sink is one-way.
 
 ## Sinks
 
@@ -45,17 +45,12 @@ or locally:
 The container mounts the Docker socket (metrics), `/` at `/host` read-only,
 and `config.toml` / `prompts/` read-only from the host.
 
-### Agent sandbox
+### Agent tools
 
-The agent's shell commands run as uid 2100000000. It can't write anything on
-the host, can't use the Docker socket, and can't read root-only files or files
-in folders other users can't enter. No other process on the host may run as that
-uid, since the agent can control them.
+The agent has no shell. It can only call a fixed set of read-only tools: the
+busiest processes, folder sizes, the kernel log, and container state and logs.
+It can't change anything on the host.
 
-It can read anything an unprivileged user on the host could, such as most `.env`
-files and ember's own `config.toml`, and what it reads is sent to your LLM
-provider. To keep a stack's secrets away from it, `chmod 750` that stack's
-folder, or leave out the API key and ember sends the raw alerts without triage.
-
-Running locally (not as root), the shell is disabled. Rootless Docker and
-userns-remap aren't supported, the uid may not map there.
+What those tools return is sent to your LLM provider, container logs included.
+To keep it on the machine, point `base_url` at a local model. To skip the LLM
+entirely, leave out the API key and ember sends the raw alerts.

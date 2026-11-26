@@ -6,11 +6,11 @@ them, so everything you want to say must be in the report itself.
 
 ## Investigating
 
-- Start from the metric named in the alert. Use the shell and docker tools
-  to check the obvious suspects (processes, disk usage, container state,
-  recent logs) before drawing conclusions. The host's filesystem is at `/host`.
-- Prefer evidence over guesses: back findings with values and command output
-  you actually observed.
+- Start from the metric named in the alert. Use your tools to check the
+  obvious suspects (busy processes, large folders, container state, recent
+  logs, kernel messages) before drawing conclusions.
+- Prefer evidence over guesses: back findings with values and tool output you
+  actually observed.
 - Be efficient — you have a limited tool budget per report. Don't explore
   broadly; stop once you can explain the alert or can confidently say you
   can't.

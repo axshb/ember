@@ -1,4 +1,7 @@
+import io
 import json
+import os
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -19,10 +22,33 @@ def container(name="web"):
   return c
 
 
-class ToolTests(unittest.IsolatedAsyncioTestCase):
-  async def test_shell_refuses_without_root(self):
-    with patch("agent.tools.os.geteuid", return_value=1000):
-      self.assertIn("disabled", await tools.run_command("id"))
+class ToolTests(unittest.TestCase):
+  def test_largest_dirs_sorts_by_size(self):
+    with tempfile.TemporaryDirectory() as host:
+      for name, size in [("small", 10_000), ("big", 3_000_000)]:
+        os.makedirs(f"{host}/srv/{name}/nested")
+        with open(f"{host}/srv/{name}/nested/file", "wb") as f:
+          f.write(os.urandom(size))
+      with patch("agent.tools.HOST", host):
+        out = tools.largest_dirs("/srv").splitlines()
+        missing = tools.largest_dirs("/nope")
+    self.assertTrue(out[0].endswith("/srv/big") and out[1].endswith("/srv/small"))
+    self.assertIn("Can't read /nope", missing)
+
+  def test_top_processes_names_the_container(self):
+    procs = []
+    for pid, cpu in [(1, 5.0), (2, 50.0)]:
+      p = Mock(pid=pid, info={"name": f"proc{pid}"}, **{"cpu_percent.return_value": cpu})
+      p.memory_info.return_value.rss = 2**20
+      procs.append(p)
+    cid = "a" * 64
+    cgroups = {"/proc/1/cgroup": "0::/system.slice/sshd.service", "/proc/2/cgroup": f"0::/../docker-{cid}.scope"}
+    with patch("agent.tools.psutil.process_iter", return_value=procs), \
+         patch("agent.tools.time.sleep"), \
+         patch("agent.tools._container_names", return_value={cid: "web"}), \
+         patch("agent.tools.open", lambda path: io.StringIO(cgroups[path]), create=True):
+      rows = json.loads(tools.top_processes())
+    self.assertEqual([(r["name"], r["container"]) for r in rows], [("proc2", "web"), ("proc1", None)])
 
   def test_inspect_hides_env_values(self):
     client = Mock(**{"containers.get.return_value": container()})
@@ -41,16 +67,6 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
   def test_unreachable_daemon_tells_the_agent(self):
     with patch("agent.tools.docker.from_env", side_effect=DockerException("no daemon")):
       self.assertIn("Docker error", tools.docker_list())
-
-  def test_sweep_kills_only_the_agent_uid(self):
-    def proc(uid):
-      return Mock(info={"uids": Mock(real=uid)})
-    agent, other, unreadable = proc(tools.AGENT_UID), proc(1000), Mock(info={"uids": None})
-    with patch("agent.tools.psutil.process_iter", return_value=[agent, other, unreadable]):
-      tools._kill_agent_processes()
-    agent.kill.assert_called_once()
-    other.kill.assert_not_called()
-    unreadable.kill.assert_not_called()
 
   def test_list_and_logs(self):
     c = container()
