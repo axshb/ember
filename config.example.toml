@@ -35,6 +35,22 @@ cooldown = 5
 # value = "exited"
 # cooldown = 60
 
+# ── Commands ─────────────────────────────────
+# Your own commands, run on the host as an unprivileged user (uid 2100000000)
+# with the host's binaries and its filesystem read-only. 2 minute timeout.
+# The agent can call each one as a tool, exactly as written here.
+# With `every` (e.g. "30m", "1h", "7d") it's also a check: ember runs it on
+# that schedule, a non-zero exit fires an alert, and a zero exit resolves it.
+
+# Names: letters, digits, _ or -, unique, and not the same as a built-in tool.
+
+# [[commands]]
+# name = "backup_fresh"
+# description = "Fails if the newest restic snapshot is older than 8 days"
+# command = ["/opt/scripts/backup_fresh.sh"]
+# every = "1h"
+# cooldown = 60
+
 # ── Agent ────────────────────────────────────
 [agent]
 # OpenRouter API key. Leave empty to send raw alerts without triage

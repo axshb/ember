@@ -8,7 +8,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
 
 from agent.report import AlertReport, fallback_report
-from agent.tools import TOOLS
+from agent.tools import TOOLS, command_tools
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 DEFAULT_PROMPTS_DIR = PROMPTS_DIR / "defaults"
@@ -46,7 +46,7 @@ def create_agent(cfg: dict) -> Agent[None, AlertReport]:
         output_type=AlertReport,
         instructions=load_prompts(),
         retries=2,
-        tools=TOOLS,
+        tools=TOOLS + command_tools(cfg.get("commands", [])),
     )
 
 

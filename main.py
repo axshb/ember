@@ -7,6 +7,7 @@ from pathlib import Path
 from agent.agent import run_alert
 from agent.report import render_markdown, resolved_report
 from daemon.alerts import check_alerts
+from daemon.checks import check_rules, run_due_checks
 from daemon.containers import collect_docker_metrics
 from daemon.system import collect_system_metrics
 from sinks import build_sinks
@@ -38,13 +39,20 @@ async def send(sinks, report):
 
 
 async def daemon_loop(cfg, sinks):
-    firing, last_fired = set(), {}
+    firing, last_fired, checks = set(), {}, {}
+    commands = cfg.get("commands", [])
     while True:
         docker = await collect_docker_metrics()
         system = await collect_system_metrics()
-        metrics = {"system": system.model_dump(), "containers": docker.model_dump()["containers"]}
+        await run_due_checks(commands, checks)
+        metrics = {
+            "system": system.model_dump(),
+            "containers": docker.model_dump()["containers"],
+            "checks": [{"name": name, "exit_code": r["exit_code"]} for name, r in checks.items()],
+        }
 
-        fired, resolved = check_alerts(metrics, cfg["alerts"], firing, last_fired)
+        rules = cfg["alerts"] + check_rules(commands, checks)
+        fired, resolved = check_alerts(metrics, rules, firing, last_fired)
         if fired:
             alerts = [{k: v for k, v in a.items() if k != "cooldown"} for a in fired]
             await send(sinks, await run_alert(alerts, cfg))

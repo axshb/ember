@@ -7,6 +7,7 @@ OPS = {
   ">=": operator.ge,
   "<=": operator.le,
   "==": operator.eq,
+  "!=": operator.ne,
 }
 
 def _get_measured_value(data, path: str):

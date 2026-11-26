@@ -45,10 +45,11 @@ def fallback_report(alerts: list[dict]) -> AlertReport:
         f"{a['path']} {a['op']} {a['value']} (measured: {a.get('measured', '?')})"
         for a in alerts
     ]
+    findings += [f"{a['path']} output:\n{a['output'][-800:]}" for a in alerts if a.get("output")]
     return AlertReport(
         title=f"Alert fired: {paths}"[:120],
         severity="warning",
         summary="The triage agent could not complete its analysis. Raw alert data below.",
-        findings=findings,
+        findings=findings[:10],
         actions=["Re-check the affected metric or re-run triage manually."],
     )

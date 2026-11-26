@@ -3,14 +3,15 @@ import os
 import re
 import subprocess
 import time
+from functools import partial
 
 import docker
 import psutil
 import requests
 from docker.errors import DockerException
+from pydantic_ai import Tool
 
-HOST = "/host" if os.path.isdir("/host") else "/"
-MAX_OUTPUT = 20_000  # chars
+from daemon.checks import HOST, MAX_OUTPUT, run_command
 
 
 def _truncate(text: str) -> str:
@@ -196,6 +197,22 @@ def docker_logs(name: str, lines: int = 200) -> str:
     if client:
       client.close()
   return _truncate(logs.decode(errors="replace"))
+
+
+def _user_command(argv: list[str], /, **_) -> str:
+  code, output = run_command(argv)
+  return f"{output}\n[exit code: {code}]"
+
+
+def command_tools(commands: list[dict]) -> list[Tool]:
+  # no parameters, so the LLM can only run each command exactly as configured
+  return [
+    Tool.from_schema(
+      partial(_user_command, c["command"]), name=c["name"], description=c.get("description", ""),
+      json_schema={"type": "object", "properties": {}},
+    )
+    for c in commands
+  ]
 
 
 TOOLS = [top_processes, largest_dirs, kernel_log, docker_list, docker_inspect, docker_logs]
