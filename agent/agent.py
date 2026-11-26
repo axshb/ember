@@ -12,9 +12,8 @@ from pydantic_ai_harness.shell import LLM_API_KEY_ENV_PATTERNS
 
 from agent.report import AlertReport, fallback_report
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
-PROMPTS_DIR = CONFIG_DIR / "prompts"
-DEFAULT_PROMPTS_DIR = CONFIG_DIR / "defaults" / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+DEFAULT_PROMPTS_DIR = PROMPTS_DIR / "defaults"
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +34,9 @@ def _is_read_only(_ctx: RunContext[None], tool_def: ToolDefinition) -> bool:
 
 
 def load_prompts() -> str:
-    """Every *.md file in config/prompts (custom) and config/defaults/prompts,
-    concatenated in sorted filename order. A custom file overrides the
-    same-named default wholesale; nothing is merged or copied, so git pulls
-    never touch customizations (config/prompts is gitignored)."""
+    """Every *.md in prompts/ (yours, gitignored) and prompts/defaults/, in sorted
+    filename order. Yours replaces the same-named default wholesale, so a git pull
+    never touches your customizations."""
     custom = {p.name: p for p in PROMPTS_DIR.glob("*.md")}
     defaults = {p.name: p for p in DEFAULT_PROMPTS_DIR.glob("*.md")}
     parts = [

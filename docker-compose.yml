@@ -14,9 +14,9 @@ services:
       # Config (gitignored, contains secrets) — mount from host
       - ./config.toml:/app/config.toml:ro
 
-      # Custom prompts (gitignored, user-specific) — read-only,
-      # override same-named files in config/defaults/prompts/
-      - ./config/prompts:/app/config/prompts:ro
+      # Prompts — read-only, so edits apply without a rebuild.
+      # prompts/*.md (gitignored) override same-named files in prompts/defaults/
+      - ./prompts:/app/prompts:ro
 
     # Config comes from TOML only, no env fallbacks.
     # If config.toml doesn't exist, the app will print a helpful error.

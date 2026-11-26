@@ -4,3 +4,4 @@ __pycache__
 .zcode/
 config.toml
 TODO
+prompts/*.md
