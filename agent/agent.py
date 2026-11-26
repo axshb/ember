@@ -52,7 +52,7 @@ def create_agent(cfg: dict) -> Agent[None, AlertReport]:
 
 async def run_alert(alerts: list[dict], cfg: dict) -> AlertReport:
     if not cfg.get("agent", {}).get("api_key"):
-        return fallback_report(alerts)
+        return fallback_report(alerts, "No API key is set, so there's no triage. Raw alert data below.")
     max_tool_calls = cfg.get("agent", {}).get("max_tool_calls", DEFAULT_MAX_TOOL_CALLS)
     try:
         agent = create_agent(cfg)

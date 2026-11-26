@@ -38,7 +38,7 @@ def resolved_report(alert: dict, minutes: int) -> AlertReport:
     )
 
 
-def fallback_report(alerts: list[dict]) -> AlertReport:
+def fallback_report(alerts: list[dict], summary: str = "The triage agent could not complete its analysis. Raw alert data below.") -> AlertReport:
     """Report built from raw alert data when the triage agent fails."""
     paths = ", ".join(a["path"] for a in alerts)
     findings = [
@@ -49,7 +49,7 @@ def fallback_report(alerts: list[dict]) -> AlertReport:
     return AlertReport(
         title=f"Alert fired: {paths}"[:120],
         severity="warning",
-        summary="The triage agent could not complete its analysis. Raw alert data below.",
+        summary=summary,
         findings=findings[:10],
         actions=["Re-check the affected metric or re-run triage manually."],
     )
