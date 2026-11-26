@@ -32,7 +32,8 @@ def _collect_cpu_metrics() -> ComponentMetrics:
         percent=0.0,
     )
     try:
-        cpu_metrics.percent = psutil.cpu_percent(interval=1, percpu=False)
+        # since the last call (the previous poll) instead of blocking the loop for 1s
+        cpu_metrics.percent = psutil.cpu_percent(interval=None, percpu=False)
     except Exception as e:
         logger.error(f"Error collecting CPU metrics: {e}")
     return cpu_metrics

@@ -92,9 +92,9 @@ def create_agent(cfg: dict) -> Agent[None, AlertReport]:
 
 
 async def run_alert(alerts: list[dict], cfg: dict) -> AlertReport:
-    agent = create_agent(cfg)
     max_tool_calls = cfg.get("agent", {}).get("max_tool_calls", DEFAULT_MAX_TOOL_CALLS)
     try:
+        agent = create_agent(cfg)
         result = await agent.run(
             "ALERTS:\n" + json.dumps(alerts, indent=2),
             usage_limits=UsageLimits(

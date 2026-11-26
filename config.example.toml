@@ -11,7 +11,8 @@ interval = 10
 # Each alert checks a metric path against a threshold.
 # Paths: system.cpu.percent, system.memory.percent,
 #        system.disks.<dev>.percent,
-#        containers.<n>.cpu_percent, containers.<n>.memory_percent
+#        containers.<n>.cpu_percent, containers.<n>.memory_usage (bytes),
+#        containers.<n>.status (stopped containers included, compare with ==)
 
 [[alerts]]
 path = "system.cpu.percent"
@@ -25,6 +26,13 @@ path = "system.memory.percent"
 op = ">"
 value = 80
 cooldown = 5
+
+# Fires when a container stops
+# [[alerts]]
+# path = "containers.nginx.status"
+# op = "=="
+# value = "exited"
+# cooldown = 60
 
 # ── Agent ────────────────────────────────────
 [agent]
